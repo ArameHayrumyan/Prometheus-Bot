@@ -1,0 +1,49 @@
+# Render Blueprint — free web service running the bot in webhook mode.
+# See README "Deploy to Render" for the full walkthrough (incl. keep-alive ping).
+services:
+  - type: web
+    name: moonin-opportunities-bot
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: USE_WEBHOOK
+        value: "true"
+      - key: PLAYWRIGHT_ENABLED
+        value: "false"   # 512MB free instance: JS-heavy pages fall back to httpx
+      - key: PORT
+        value: "8080"
+      - key: TZ
+        value: Asia/Yerevan
+      - key: BOT_TOKEN
+        sync: false
+      - key: WEBHOOK_BASE_URL
+        sync: false      # set to https://<this-service>.onrender.com after first deploy
+      - key: WEBHOOK_SECRET
+        generateValue: true
+      - key: CHANNEL_ID_UNDERGRAD
+        sync: false
+      - key: CHANNEL_ID_MASTERS
+        sync: false
+      - key: CHANNEL_ID_PHD
+        sync: false
+      - key: ADMIN_USER_IDS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: NEWSLETTER_IMAP_HOST
+        sync: false
+      - key: NEWSLETTER_IMAP_USER
+        sync: false
+      - key: NEWSLETTER_IMAP_PASSWORD
+        sync: false
+      - key: SCRAPER_PROXY_URL
+        sync: false
+      - key: LINKEDIN_PROXY_URL
+        sync: false

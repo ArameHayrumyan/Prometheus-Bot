@@ -1,0 +1,87 @@
+"""Source registry management: /addsource, /listsources, /togglesource."""
+from aiogram import Router
+from aiogram.filters import Command, CommandObject
+from aiogram.types import Message
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.bot.handlers.admin import IsAdmin
+from app.constants import SourceType
+from app.db.models import AdminAction, Source
+
+router = Router()
+router.message.filter(IsAdmin())
+
+USAGE = (
+    "Usage: <code>/addsource &lt;type&gt; &lt;url&gt; [category] [name...]</code>\n"
+    f"Types: {', '.join(s.value for s in SourceType)}\n"
+    "Examples:\n"
+    "<code>/addsource rss https://example.org/feed/ aggregator Example feed</code>\n"
+    "<code>/addsource webpage https://uni.edu/scholarships university Uni bulletin</code>\n"
+    "Add <code>js</code> as category suffix (e.g. <code>company:js</code>) for "
+    "Playwright rendering."
+)
+
+
+@router.message(Command("addsource"))
+async def cmd_addsource(message: Message, command: CommandObject, session: AsyncSession):
+    args = (command.args or "").split()
+    if len(args) < 2:
+        await message.answer(USAGE, parse_mode="HTML")
+        return
+    stype, url = args[0].lower(), args[1]
+    if stype not in [s.value for s in SourceType]:
+        await message.answer(f"Unknown type «{stype}».\n\n{USAGE}", parse_mode="HTML")
+        return
+    if not url.startswith(("http://", "https://", "imap://")):
+        await message.answer("URL must start with http(s):// or imap://")
+        return
+    category = args[2] if len(args) > 2 else "general"
+    needs_js = category.endswith(":js")
+    category = category.removesuffix(":js")
+    name = " ".join(args[3:]) if len(args) > 3 else url[:80]
+
+    source = Source(name=name, source_type=stype, url=url,
+                    category=category, needs_js=needs_js, active=True)
+    session.add(source)
+    await session.flush()
+    session.add(AdminAction(admin_tg_id=message.from_user.id, action="source_add",
+                            payload={"source_id": source.id, "url": url}))
+    await message.answer(
+        f"✅ Source #{source.id} added: <b>{name}</b>\n"
+        f"type={stype}, category={category}, js={needs_js}\n"
+        "It will be picked up on the next scheduled run.",
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("listsources"))
+async def cmd_listsources(message: Message, session: AsyncSession):
+    sources = (await session.execute(
+        select(Source).order_by(Source.source_type, Source.id)
+    )).scalars().all()
+    lines = [f"🗂 <b>Source registry</b> ({len(sources)} targets)", ""]
+    for s in sources:
+        status = "🟢" if s.active else "⚪️"
+        checked = s.last_checked_at.strftime("%m-%d %H:%M") if s.last_checked_at else "never"
+        lines.append(f"{status} #{s.id} [{s.source_type}] {s.name[:45]} (checked: {checked})")
+    # Telegram 4096 limit — send in chunks
+    text = "\n".join(lines)
+    for i in range(0, len(text), 3900):
+        await message.answer(text[i:i + 3900], parse_mode="HTML" if i == 0 else None)
+
+
+@router.message(Command("togglesource"))
+async def cmd_togglesource(message: Message, command: CommandObject, session: AsyncSession):
+    arg = (command.args or "").strip()
+    if not arg.isdigit():
+        await message.answer("Usage: /togglesource <id>")
+        return
+    source = await session.get(Source, int(arg))
+    if source is None:
+        await message.answer("No such source.")
+        return
+    source.active = not source.active
+    session.add(AdminAction(admin_tg_id=message.from_user.id, action="source_toggle",
+                            payload={"source_id": source.id, "active": source.active}))
+    await message.answer(f"Source #{source.id} is now {'🟢 active' if source.active else '⚪️ inactive'}.")

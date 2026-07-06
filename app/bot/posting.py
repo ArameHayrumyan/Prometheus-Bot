@@ -15,6 +15,7 @@ from app.constants import OppStatus
 from app.db.models import Channel, ChannelPost, Opportunity, SavedFilter, User
 from app.i18n import t
 from app.logging_setup import get_logger
+from app.utils.text import smart_truncate
 
 log = get_logger("bot.posting")
 
@@ -42,10 +43,8 @@ def default_body(opp: Opportunity) -> str:
     lines = [f"<b>{_esc(opp.title)}</b>"]
     if opp.org:
         lines.append(f"🏛 <i>{_esc(opp.org)}</i>")
-    desc = opp.description[:900]
-    if len(opp.description) > 900:
-        desc += "…"
-    if desc.strip():
+    desc = smart_truncate(opp.description, 900)
+    if desc:
         lines.append("")
         lines.append(f"<blockquote expandable>{_esc(desc)}</blockquote>")
     return "\n".join(lines)

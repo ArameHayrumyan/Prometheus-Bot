@@ -22,6 +22,7 @@ from app.bot.states import AdminEdit
 from app.constants import OppStatus
 from app.db.models import AdminAction, Opportunity
 from app.logging_setup import get_logger
+from app.utils.text import smart_truncate
 
 router = Router()
 router.message.filter(IsAdmin())
@@ -47,7 +48,7 @@ def queue_card(opp: Opportunity, total: int, mode: str) -> str:
     if opp.org:
         lines.append(f"🏛 <i>{_esc(opp.org)}</i>")
     lines.append("")
-    lines.append(f"<blockquote expandable>{_esc(opp.description[:1500])}</blockquote>")
+    lines.append(f"<blockquote expandable>{_esc(smart_truncate(opp.description, 1500))}</blockquote>")
     lines.append("")
     facts = [
         f"💰 {FUNDING_LABEL.get(opp.funding_tier, opp.funding_tier)}",

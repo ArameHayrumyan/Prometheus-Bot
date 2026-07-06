@@ -6,6 +6,7 @@ from app.db.models import Opportunity, User
 from app.i18n import t
 from app.pipeline.normalize import Extracted
 from app.pipeline.scoring import StudentSnapshot, chance_percent, english_flag
+from app.utils.text import smart_truncate
 
 
 def _esc(s: str) -> str:
@@ -93,7 +94,7 @@ def build_detail_text(opp: Opportunity, user: User, weights: dict) -> str:
     if opp.requirements:
         lines.append("")
         lines.append(f"<b>{t('detail_requirements', lang)}</b>")
-        lines.append(f"<blockquote expandable>{_esc(opp.requirements[:800])}</blockquote>")
+        lines.append(f"<blockquote expandable>{_esc(smart_truncate(opp.requirements, 800))}</blockquote>")
     lines.append("")
     if user.onboarded:
         lines.append(f"{t('detail_chance_personal', lang)}: ~{personal_chance(opp, user, weights)}%")

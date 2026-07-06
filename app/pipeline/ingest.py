@@ -56,12 +56,18 @@ async def process_raw(session: AsyncSession, raw: RawOpportunity) -> Opportunity
     )
     gate = hard_gate.evaluate(extracted, min_duration)
 
+    # org: handler-provided, else extracted from title/first lines, else the
+    # source domain as a readable last resort (never "unknown")
+    org = (raw.org
+           or normalize.extract_org(raw.title, raw.text)
+           or urlparse(raw.url).netloc.lower().removeprefix("www."))
+
     opp = Opportunity(
         source_id=raw.source_id,
         url=raw.url,
         raw_hash=raw_hash,
         title=raw.title,
-        org=raw.org,
+        org=org,
         description=raw.text[:8000],
         opportunity_type=extracted.opportunity_type,
         degree_levels=extracted.degree_levels,

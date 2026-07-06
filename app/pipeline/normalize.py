@@ -226,11 +226,79 @@ def extract_english_req(text: str) -> tuple[str | None, float | None]:
     return None, None
 
 
-def match_fields(text: str, taxonomy: dict[str, list[str]]) -> list[str]:
-    """taxonomy: {field_name: [keywords...]} — from the DB-backed table."""
-    t = " " + text.lower() + " "
-    return [name for name, keywords in taxonomy.items()
-            if any(kw in t for kw in keywords)]
+# Role titles that are NOT target opportunities even when the posting/company
+# mentions tech keywords in its boilerplate ("marketing manager at a software
+# company" must not match Computer Science).
+NON_TECH_TITLE = re.compile(
+    r"\b(marketing|sales|business development|account (?:manager|executive)|"
+    r"human resources|hr (?:manager|specialist|intern|assistant)|recruit(?:er|ment)|"
+    r"communications?|public relations|social media|copywrit\w*|"
+    r"content (?:writer|creator|manager|marketing)|community manager|"
+    r"office (?:manager|assistant)|administrative|receptionist|"
+    r"customer (?:support|success|service)|finance|accounting|accountant|"
+    r"legal|paralegal|event (?:manager|coordinator)|fundrais\w*|logistics|"
+    r"procurement|business analyst|brand|growth manager|seo )",
+    re.IGNORECASE,
+)
+
+
+def match_fields(title: str, body: str, taxonomy: dict[str, list[str]]) -> list[str]:
+    """taxonomy: {field_name: [keywords...]} — from the DB-backed table.
+
+    The *title* names the role, so it decides:
+      1. a field keyword in the title -> match;
+      2. a non-tech role title with no tech keyword -> no match, ever
+         (kills marketing/management jobs at tech companies);
+      3. otherwise fall back to the body, but only trust keywords that appear
+         near the top (first 300 chars, where the role summary lives) or that
+         occur as 2+ distinct keywords — a lone keyword buried in company
+         boilerplate is not evidence.
+    """
+    padded_title = " " + title.lower() + " "
+    padded_body = " " + body.lower() + " "
+    body_head = padded_body[:300]
+
+    title_matched = [name for name, keywords in taxonomy.items()
+                     if any(kw in padded_title for kw in keywords)]
+    if title_matched:
+        return title_matched
+    if NON_TECH_TITLE.search(title):
+        return []
+    matched = []
+    for name, keywords in taxonomy.items():
+        hits = [kw for kw in keywords if kw in padded_body]
+        if len(hits) >= 2 or any(kw in body_head for kw in hits):
+            matched.append(name)
+    return matched
+
+
+# Organization-name extraction: title first ("Intern at Broad Institute"),
+# then the first lines of the body, where announcements name themselves.
+_ORG_TITLE_AT = re.compile(
+    r"\bat (?:the )?([A-Z][\w&.'()-]*(?:\s+(?:of|for|and|the|[A-Z&][\w&.'()-]*)){0,5})"
+)
+_ORG_BODY_PATTERNS = [
+    re.compile(r"^\s*(?:the )?([A-Z][\w&.'() -]{2,60}?)\s+(?:is|are)\s+"
+               r"(?:seeking|looking|hiring|recruiting|offering|inviting|accepting)",
+               re.MULTILINE),
+    re.compile(r"(?:company|organi[sz]ation|employer|institution|institute|host(?:ing)? lab)"
+               r"\s*[:\-–]\s*([^\n.;|]{2,60})", re.IGNORECASE),
+    re.compile(r"\bjoin (?:the )?([A-Z][\w&.'-]+(?:\s+[A-Z&][\w&.'-]+){0,4})"),
+]
+
+
+def extract_org(title: str, text: str) -> str | None:
+    m = _ORG_TITLE_AT.search(title)
+    if m:
+        return m.group(1).strip(" ,.;:-")[:80]
+    head = text[:400]
+    for pattern in _ORG_BODY_PATTERNS:
+        m = pattern.search(head)
+        if m:
+            org = m.group(1).strip(" ,.;:-")
+            if 2 < len(org) <= 80:
+                return org
+    return None
 
 
 def find_noise(text: str, noise_keywords: list[str]) -> list[str]:
@@ -275,7 +343,7 @@ def extract_all(title: str, text: str, taxonomy: dict[str, list[str]],
         english_req_score=extract_english_req(blob)[1],
         spots=(int(m.group(1)) if (m := SPOTS_PATTERN.search(blob)) else None),
         acceptance_rate=(float(m.group(1)) if (m := ACCEPTANCE_PATTERN.search(blob)) else None),
-        fields_matched=match_fields(blob, taxonomy),
+        fields_matched=match_fields(title, text, taxonomy),
         has_deliverable=has_deliverable(blob, deliverable_keywords),
         noise_hits=find_noise(blob, noise_keywords),
         requirements=extract_requirements(blob),

@@ -12,6 +12,7 @@ DEFAULTS: dict[str, Any] = {
     "borderline_band": [40, 65],
     "min_duration_days": 15,
     "ai_priority": ["groq", "deepseek", "gemini"],
+    "enrich_daily_cap": 50,
     "ai_disabled": [],
     "noise_keywords": [
         "leadership camp", "youth summit", "youth forum", "networking event",

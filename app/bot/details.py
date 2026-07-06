@@ -91,7 +91,12 @@ def build_detail_text(opp: Opportunity, user: User, weights: dict) -> str:
                                test=user.english_test, score=f"{user.english_score:g}"))
         else:
             lines.append(t("english_none_on_req", lang))
-    if opp.requirements:
+    enr_reqs = (opp.enrichment or {}).get("requirements")
+    if enr_reqs:
+        lines.append("")
+        lines.append(f"<b>{t('detail_requirements', lang)}</b>")
+        lines.extend(f"• {_esc(b)}" for b in enr_reqs)
+    elif opp.requirements:
         lines.append("")
         lines.append(f"<b>{t('detail_requirements', lang)}</b>")
         lines.append(f"<blockquote expandable>{_esc(smart_truncate(opp.requirements, 800))}</blockquote>")

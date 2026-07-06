@@ -55,7 +55,25 @@ def build_post_text(opp: Opportunity, lang: str = "en") -> str:
     header = f"{emoji} <b>{opp.opportunity_type.upper()}</b>"
     if opp.country:
         header += f"  ·  🌍 {_esc(opp.country)}"
-    body = opp.edited_text if opp.edited_text else default_body(opp)
+
+    enr = opp.enrichment or {}
+    # body precedence: admin free-edit > AI tl;dr > scraped description
+    if opp.edited_text:
+        body = opp.edited_text
+    elif enr.get("tldr"):
+        lines = [f"<b>{_esc(opp.title)}</b>"]
+        if opp.org:
+            lines.append(f"🏛 <i>{_esc(opp.org)}</i>")
+        lines.append("")
+        lines.append(_esc(enr["tldr"]))
+        body = "\n".join(lines)
+    else:
+        body = default_body(opp)
+    if enr.get("requirements"):
+        body += "\n\n📋 <b>{}</b>\n".format(t("detail_requirements", lang))
+        body += "\n".join(f"• {_esc(b)}" for b in enr["requirements"])
+    if enr.get("competitiveness"):
+        body += f"\n\n📊 <i>{_esc(enr['competitiveness'])}</i>"
 
     facts = []
     facts.append(f"💰 <b>{t('funding_' + opp.funding_tier, lang)}</b>")
@@ -76,18 +94,24 @@ def build_post_text(opp: Opportunity, lang: str = "en") -> str:
     return "\n\n".join([header, body, "\n".join(facts), footer])
 
 
-def build_post_keyboard(opp: Opportunity, bot_username: str, lang: str = "en") -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text=t("btn_apply", lang), url=opp.apply_url or opp.url)]]
-    rows.append([
-        InlineKeyboardButton(
-            text=t("btn_details", lang),
-            url=f"https://t.me/{bot_username}?start=opp_{opp.id}",
-        ),
-        InlineKeyboardButton(
-            text=t("btn_analyze", lang),
-            url=f"https://t.me/{bot_username}?start=fit_{opp.id}",
-        ),
-    ])
+def build_post_keyboard(opp: Opportunity, bot_username: str, lang: str = "en",
+                        save_as_callback: bool = False) -> InlineKeyboardMarkup:
+    """Channel posts use a Save deep-link (channel buttons are shared by all
+    subscribers); DM cards use a Save callback (save_as_callback=True)."""
+    save_btn = (
+        InlineKeyboardButton(text=t("btn_save", lang), callback_data=f"sv:{opp.id}")
+        if save_as_callback else
+        InlineKeyboardButton(text=t("btn_save", lang),
+                             url=f"https://t.me/{bot_username}?start=save_{opp.id}")
+    )
+    rows = [
+        [InlineKeyboardButton(text=t("btn_apply", lang), url=opp.apply_url or opp.url),
+         save_btn],
+        [InlineKeyboardButton(text=t("btn_details", lang),
+                              url=f"https://t.me/{bot_username}?start=opp_{opp.id}"),
+         InlineKeyboardButton(text=t("btn_analyze", lang),
+                              url=f"https://t.me/{bot_username}?start=fit_{opp.id}")],
+    ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

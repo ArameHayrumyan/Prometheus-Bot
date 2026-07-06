@@ -114,6 +114,7 @@ class Opportunity(Base):
     discard_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     ai_verdict: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     edited_text: Mapped[str | None] = mapped_column(Text, nullable=True)  # admin free-edit body
+    enrichment: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # AI tldr/competitiveness/req bullets
     image_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -134,6 +135,21 @@ class ChannelPost(Base):
     tg_channel_id: Mapped[int] = mapped_column(BigInteger)
     message_id: Mapped[int] = mapped_column(BigInteger)
     __table_args__ = (UniqueConstraint("tg_channel_id", "message_id"),)
+
+
+class SavedOpportunity(Base):
+    """A user's saved item: drives deadline reminders and the application tracker."""
+    __tablename__ = "saved_opportunities"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_tg_id: Mapped[int] = mapped_column(ForeignKey("users.tg_id", ondelete="CASCADE"))
+    opportunity_id: Mapped[int] = mapped_column(ForeignKey("opportunities.id", ondelete="CASCADE"))
+    saved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    remind: Mapped[bool] = mapped_column(Boolean, default=True)
+    reminders_sent: Mapped[list] = mapped_column(JSON, default=list)  # e.g. [7, 3]
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    outcome: Mapped[str | None] = mapped_column(String(20), nullable=True)  # accepted/rejected
+    outcome_asked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    __table_args__ = (UniqueConstraint("user_tg_id", "opportunity_id"),)
 
 
 class Document(Base):

@@ -1,5 +1,7 @@
-"""APScheduler jobs: scraping cadences, reputation updates, expiry."""
-from datetime import date
+"""APScheduler jobs: scraping cadences, reputation updates, expiry,
+deadline reminders, application-outcome follow-ups, weekly channel digests."""
+import html
+from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlparse
 
 from aiogram import Bot
@@ -9,13 +11,25 @@ from sqlalchemy import func, select, update
 from app.config import get_settings
 from app.constants import OppStatus
 from app.db.base import session_scope
-from app.db.models import AdminAction, Opportunity, Source, SourceReputation
+from app.db.models import (AdminAction, Channel, Opportunity, SavedOpportunity,
+                           Source, SourceReputation, User)
 from app.db.settings_service import get_setting, set_setting
+from app.i18n import t
 from app.logging_setup import get_logger
 from app.scraping.registry import active_sources, fetch_source
 from app.pipeline.ingest import process_raw
 
 log = get_logger("scheduler")
+
+REMINDER_DAYS = (7, 3, 1)
+
+
+def reminder_day_due(deadline: date, sent_days: list, today: date) -> int | None:
+    """Which reminder (7/3/1 days-before) is due today, if any. Pure/testable."""
+    days_left = (deadline - today).days
+    if days_left in REMINDER_DAYS and days_left not in sent_days:
+        return days_left
+    return None
 
 
 async def run_source_types(bot: Bot, source_types: list[str],
@@ -120,6 +134,137 @@ async def expire_opportunities() -> None:
         log.info("expired_marked", count=result.rowcount)
 
 
+async def send_deadline_reminders(bot: Bot) -> None:
+    """Daily 10:00 Yerevan: DM users about saved items 7/3/1 days from deadline.
+    Skips muted saves and items the user already applied to."""
+    from app.bot.keyboards import kb
+
+    today = date.today()
+    sent = 0
+    async with session_scope() as session:
+        rows = (await session.execute(
+            select(SavedOpportunity, Opportunity, User)
+            .join(Opportunity, Opportunity.id == SavedOpportunity.opportunity_id)
+            .join(User, User.tg_id == SavedOpportunity.user_tg_id)
+            .where(SavedOpportunity.remind.is_(True),
+                   SavedOpportunity.applied_at.is_(None),
+                   Opportunity.deadline.is_not(None),
+                   Opportunity.deadline >= today,
+                   Opportunity.deadline <= today + timedelta(days=max(REMINDER_DAYS)))
+        )).all()
+        for saved, opp, user in rows:
+            due = reminder_day_due(opp.deadline, saved.reminders_sent or [], today)
+            if due is None:
+                continue
+            lang = user.language
+            text = t("reminder_msg", lang, days=due,
+                     title=html.escape(opp.title[:120], quote=False),
+                     deadline=opp.deadline.isoformat())
+            try:
+                await bot.send_message(
+                    user.tg_id, text, parse_mode="HTML",
+                    reply_markup=kb([
+                        [(t("btn_details", lang), f"svd:{saved.id}"),
+                         (t("btn_applied", lang), f"svapp:{saved.id}")],
+                        [("🔕", f"svmute:{saved.id}")],
+                    ]),
+                )
+                saved.reminders_sent = list(saved.reminders_sent or []) + [due]
+                sent += 1
+            except Exception as e:
+                log.info("reminder_failed", user=user.tg_id, error=str(e)[:150])
+    log.info("reminders_sent", count=sent)
+
+
+async def ask_outcomes(bot: Bot) -> None:
+    """Daily: ~30 days after a deadline, ask users who applied how it went.
+    'Still waiting' answers get re-asked after another 30 days."""
+    from app.bot.keyboards import kb
+
+    now = datetime.now(timezone.utc)
+    cutoff_deadline = date.today() - timedelta(days=30)
+    re_ask_before = now - timedelta(days=30)
+    asked = 0
+    async with session_scope() as session:
+        rows = (await session.execute(
+            select(SavedOpportunity, Opportunity, User)
+            .join(Opportunity, Opportunity.id == SavedOpportunity.opportunity_id)
+            .join(User, User.tg_id == SavedOpportunity.user_tg_id)
+            .where(SavedOpportunity.applied_at.is_not(None),
+                   SavedOpportunity.outcome.is_(None),
+                   Opportunity.deadline.is_not(None),
+                   Opportunity.deadline <= cutoff_deadline)
+        )).all()
+        for saved, opp, user in rows:
+            if saved.outcome_asked_at is not None and saved.outcome_asked_at > re_ask_before:
+                continue
+            lang = user.language
+            try:
+                await bot.send_message(
+                    user.tg_id,
+                    t("outcome_q", lang, title=html.escape(opp.title[:120], quote=False)),
+                    parse_mode="HTML",
+                    reply_markup=kb([
+                        [(t("outcome_accepted_btn", lang), f"svout:{saved.id}:accepted"),
+                         (t("outcome_rejected_btn", lang), f"svout:{saved.id}:rejected")],
+                        [(t("outcome_waiting_btn", lang), f"svout:{saved.id}:waiting")],
+                    ]),
+                )
+                saved.outcome_asked_at = now
+                asked += 1
+            except Exception as e:
+                log.info("outcome_ask_failed", user=user.tg_id, error=str(e)[:150])
+    log.info("outcomes_asked", count=asked)
+
+
+def pick_digest_items(opps: list, limit: int = 5, minimum: int = 3) -> list:
+    """Top open items for a weekly digest: soonest deadline first, chance as
+    tiebreaker; empty list when below the minimum. Pure/testable."""
+    ranked = sorted(opps, key=lambda o: (o.deadline, -o.chance_percent))
+    if len(ranked) < minimum:
+        return []
+    return ranked[:limit]
+
+
+async def weekly_digest(bot: Bot) -> None:
+    """Sunday 19:00 Yerevan: per-channel top-5 closing-soon digest.
+    Zero AI tokens — assembled entirely from stored data."""
+    me = await bot.get_me()
+    today = date.today()
+    async with session_scope() as session:
+        channels = (await session.execute(select(Channel))).scalars().all()
+        for channel in channels:
+            opps = (await session.execute(
+                select(Opportunity)
+                .where(Opportunity.status == OppStatus.PUBLISHED,
+                       Opportunity.degree_levels.contains([channel.degree_level_code]),
+                       Opportunity.deadline.is_not(None),
+                       Opportunity.deadline >= today,
+                       Opportunity.deadline <= today + timedelta(days=60))
+            )).scalars().all()
+            picked = pick_digest_items(list(opps))
+            if not picked:
+                log.info("digest_skipped", channel=channel.degree_level_code,
+                         open_items=len(opps))
+                continue
+            lines = ["🗓 <b>Weekly digest — closing soon</b>", ""]
+            for i, opp in enumerate(picked, 1):
+                days_left = (opp.deadline - today).days
+                link = f"https://t.me/{me.username}?start=opp_{opp.id}"
+                lines.append(
+                    f"{i}. <a href=\"{link}\">{html.escape(opp.title[:80], quote=False)}</a>\n"
+                    f"   📅 {opp.deadline} ({days_left}d left) · 🎯 ~{opp.chance_percent}%"
+                )
+            lines.append("")
+            lines.append("<i>⭐ Save any post to get deadline reminders.</i>")
+            try:
+                await bot.send_message(channel.tg_channel_id, "\n".join(lines)[:4096],
+                                       parse_mode="HTML", disable_web_page_preview=True)
+            except Exception as e:
+                log.error("digest_failed", channel=channel.tg_channel_id,
+                          error=str(e)[:200])
+
+
 def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     s = get_settings()
     scheduler = AsyncIOScheduler(timezone=s.tz)
@@ -140,4 +285,10 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
                       coalesce=True, misfire_grace_time=3600)
     scheduler.add_job(update_reputation, "cron", hour=3, minute=30, id="reputation")
     scheduler.add_job(expire_opportunities, "cron", hour=0, minute=15, id="expire")
+    scheduler.add_job(send_deadline_reminders, "cron", hour=10, minute=0,
+                      args=[bot], id="reminders", misfire_grace_time=3600)
+    scheduler.add_job(ask_outcomes, "cron", hour=10, minute=10,
+                      args=[bot], id="outcomes", misfire_grace_time=3600)
+    scheduler.add_job(weekly_digest, "cron", day_of_week="sun", hour=19, minute=0,
+                      args=[bot], id="digest", misfire_grace_time=3600)
     return scheduler

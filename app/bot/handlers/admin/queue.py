@@ -14,6 +14,7 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.enrich import enrich_opportunity
 from app.bot.handlers.admin import IsAdmin
 from app.bot.keyboards import kb
 from app.bot.posting import (FUNDING_LABEL, TYPE_EMOJI, build_post_text,
@@ -92,6 +93,19 @@ def queue_kb(opp_id: int, mode: str = "p"):
     ])
 
 
+async def _publish_now(query: CallbackQuery, session: AsyncSession,
+                       opp: Opportunity, mode: str, note: str = "") -> None:
+    session.add(AdminAction(admin_tg_id=query.from_user.id, opportunity_id=opp.id,
+                            action="approve"))
+    opp.status = OppStatus.APPROVED
+    posted = await publish_opportunity(query.bot, session, opp)
+    await session.flush()
+    await query.answer(f"Published to {posted} channel(s) {note}".strip())
+    if posted:
+        await notify_saved_filters(query.bot, session, opp)
+    await show_queue(query.message, session, mode, after_id=opp.id, edit=True)
+
+
 async def _count(session: AsyncSession, mode: str) -> int:
     return (await session.execute(
         select(func.count()).select_from(Opportunity)
@@ -123,16 +137,25 @@ async def show_queue(message: Message, session: AsyncSession, mode: str = "p",
         opp = await _fetch_item(session, mode, 0, None)
     if opp is None:
         text = "📭 Review queue is empty." if mode == "p" else "🗂 Archive is empty."
-        await (message.edit_text(text) if edit else message.answer(text))
+        if edit:
+            try:
+                await message.edit_text(text)
+                return
+            except Exception:
+                pass
+        await message.answer(text)
         return
     text = queue_card(opp, total, mode)
     markup = queue_kb(opp.id, mode)
     if edit:
-        await message.edit_text(text, reply_markup=markup, parse_mode="HTML",
-                                disable_web_page_preview=True)
-    else:
-        await message.answer(text, reply_markup=markup, parse_mode="HTML",
-                             disable_web_page_preview=True)
+        try:
+            await message.edit_text(text, reply_markup=markup, parse_mode="HTML",
+                                    disable_web_page_preview=True)
+            return
+        except Exception:
+            pass  # e.g. previous message was a photo preview -> send fresh
+    await message.answer(text, reply_markup=markup, parse_mode="HTML",
+                         disable_web_page_preview=True)
 
 
 @router.message(Command("queue"))
@@ -191,15 +214,37 @@ async def cb_admin(query: CallbackQuery, session: AsyncSession, state: FSMContex
         return
 
     if action == "approve":
-        session.add(AdminAction(admin_tg_id=query.from_user.id, opportunity_id=opp.id,
-                                action="approve"))
-        opp.status = OppStatus.APPROVED
-        posted = await publish_opportunity(query.bot, session, opp)
+        # AI enrichment step: one call, capped daily, cached on the row.
+        # On cap/failure -> publish immediately with the regex content (old path).
+        await query.answer("✨ Enriching…" if not opp.enrichment else "Preview")
+        enrichment = await enrich_opportunity(session, opp)
+        if enrichment is None:
+            await _publish_now(query, session, opp, mode, note="(no AI: cap/failure)")
+            return
+        preview = build_post_text(opp)
+        preview_kb = kb([
+            [("✅ Publish", f"adm:pub:{opp.id}:{mode}"),
+             ("✏️ Edit first", f"adm:edit:{opp.id}:{mode}")],
+            [("↩️ Publish original (no AI)", f"adm:orig:{opp.id}:{mode}")],
+            [("◀️ Back to queue", f"adm:skip:{opp.id - 1}:{mode}")],
+        ])
+        if opp.image_file_id:
+            await query.message.answer_photo(opp.image_file_id, caption=preview[:1024],
+                                             parse_mode="HTML", reply_markup=preview_kb)
+        else:
+            await query.message.answer(preview[:4096], parse_mode="HTML",
+                                       disable_web_page_preview=True,
+                                       reply_markup=preview_kb)
+        return
+
+    if action == "pub":
+        await _publish_now(query, session, opp, mode)
+        return
+
+    if action == "orig":
+        opp.enrichment = None  # discard the AI version for this post
         await session.flush()
-        await query.answer(f"Published to {posted} channel(s)")
-        if posted:
-            await notify_saved_filters(query.bot, session, opp)
-        await show_queue(query.message, session, mode, after_id=opp_id, edit=True)
+        await _publish_now(query, session, opp, mode, note="(original text)")
         return
 
     if action == "edit":

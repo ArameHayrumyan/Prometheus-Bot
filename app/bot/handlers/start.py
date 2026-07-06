@@ -28,12 +28,18 @@ async def _taxonomy_names(session: AsyncSession) -> list[str]:
 
 
 async def _show_detail(message: Message, session: AsyncSession, user: User, opp_id: int) -> bool:
+    from app.bot.keyboards import kb
+
     opp = await session.get(Opportunity, opp_id)
     if opp is None:
         return False
     weights = await get_setting(session, "scoring_weights")
-    await message.answer(build_detail_text(opp, user, weights),
-                         parse_mode="HTML", disable_web_page_preview=True)
+    await message.answer(
+        build_detail_text(opp, user, weights),
+        parse_mode="HTML", disable_web_page_preview=True,
+        reply_markup=kb([[(t("btn_analyze", user.language), f"fit:{opp.id}"),
+                          (t("btn_save", user.language), f"sv:{opp.id}")]]),
+    )
     return True
 
 
@@ -48,6 +54,12 @@ async def start_deeplink(message: Message, command: CommandObject,
         opp = await session.get(Opportunity, int(payload[4:]))
         if opp is not None:
             await run_fit_analysis(message, session, user, opp)
+            return
+    elif payload.startswith("save_") and payload[5:].isdigit():
+        from app.bot.handlers.saved import handle_save
+        opp = await session.get(Opportunity, int(payload[5:]))
+        if opp is not None:
+            await handle_save(message, session, user, opp)
             return
     await start_plain(message, session, user, state)
 

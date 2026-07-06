@@ -108,6 +108,20 @@ async def cmd_setband(message: Message, command: CommandObject, session: AsyncSe
     await message.answer(f"✅ Borderline band: [{lo}, {hi}]")
 
 
+@router.message(Command("setcap"))
+async def cmd_setcap(message: Message, command: CommandObject, session: AsyncSession):
+    arg = (command.args or "").strip()
+    if not arg.isdigit():
+        cap = await get_setting(session, "enrich_daily_cap")
+        used = await get_setting(session, "enrich_used") or {}
+        await message.answer(
+            f"Usage: /setcap <n>\nAI enrichments per day: cap {cap}, "
+            f"used today: {used.get('count', 0) if used else 0}")
+        return
+    await set_setting(session, "enrich_daily_cap", int(arg))
+    await message.answer(f"✅ AI enrichment cap: {arg}/day (live)")
+
+
 @router.message(Command("setminduration"))
 async def cmd_setminduration(message: Message, command: CommandObject, session: AsyncSession):
     arg = (command.args or "").strip()

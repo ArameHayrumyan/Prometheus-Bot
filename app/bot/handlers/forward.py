@@ -31,7 +31,8 @@ async def on_forward(message: Message, session: AsyncSession, user: User):
     await message.answer(
         build_detail_text(opp, user, weights),
         parse_mode="HTML", disable_web_page_preview=True,
-        reply_markup=kb([[(t("btn_analyze", user.language), f"fit:{opp.id}")]]),
+        reply_markup=kb([[(t("btn_analyze", user.language), f"fit:{opp.id}"),
+                          (t("btn_save", user.language), f"sv:{opp.id}")]]),
     )
     if await has_resume(session, user.tg_id):
         await run_fit_analysis(message, session, user, opp)

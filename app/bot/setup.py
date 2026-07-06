@@ -5,7 +5,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (BotCommand, BotCommandScopeChat,
                            BotCommandScopeDefault)
 
-from app.bot.handlers import analyze, documents, forward, search, start
+from app.bot.handlers import analyze, documents, forward, saved, search, start
 from app.bot.handlers.admin import ai_admin, queue, sources, taxonomy
 from app.bot.middlewares import DbSessionMiddleware, UserMiddleware
 from app.config import get_settings
@@ -15,6 +15,7 @@ log = get_logger("bot.setup")
 
 STUDENT_COMMANDS = [
     BotCommand(command="search", description="🔍 Browse opportunities"),
+    BotCommand(command="saved", description="⭐ Saved & deadline reminders"),
     BotCommand(command="filters", description="💾 Saved filters & notifications"),
     BotCommand(command="mydocs", description="📎 My resume & documents"),
     BotCommand(command="profile", description="👤 My profile"),
@@ -58,6 +59,7 @@ def create_dispatcher() -> Dispatcher:
     dp.include_router(start.router)
     dp.include_router(documents.router)
     dp.include_router(search.router)
+    dp.include_router(saved.router)
     dp.include_router(analyze.router)
     dp.include_router(forward.router)
     return dp

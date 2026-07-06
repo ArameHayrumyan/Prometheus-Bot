@@ -143,7 +143,8 @@ async def _run_search(message: Message, session: AsyncSession, user: User,
     for opp in opps[:PAGE_SIZE]:
         await message.answer(
             build_post_text(opp, lang)[:4096],
-            reply_markup=build_post_keyboard(opp, me.username or "", lang),
+            reply_markup=build_post_keyboard(opp, me.username or "", lang,
+                                             save_as_callback=True),
             parse_mode="HTML", disable_web_page_preview=True,
         )
     nav: list[tuple[str, str]] = []

@@ -25,6 +25,32 @@ Based on the candidate and the admin's past verdicts on similar listings, decide
 
 TIEBREAK_EXAMPLE = """- [{verdict}] {title} ({opportunity_type}, {funding_tier}) — {snippet}"""
 
+ENRICH_SYSTEM = (
+    "You are the editor of a Telegram channel listing funded opportunities for "
+    "Armenian STEM students. You turn messy scraped listing text into clean post "
+    "content. Respond ONLY with a JSON object: "
+    '{"tldr": "<2-3 plain sentences: what this is, who runs it, what it offers>", '
+    '"competitiveness": "<one short sentence on how selective it likely is>", '
+    '"requirements": ["<3-5 short requirement bullets>"]} '
+    "Rules: English only. Be strictly factual — never invent funding amounts, "
+    "deadlines, benefits or requirements not present in the input. If the text "
+    "is too thin to summarize honestly, keep the tldr to one cautious sentence."
+)
+
+ENRICH_TEMPLATE = """Listing to clean up:
+Title: {title}
+Organization: {org}
+Type: {opportunity_type}
+Funding tier (pre-classified): {funding_tier}
+Deadline: {deadline}
+Duration (days): {duration}
+Spots (if stated): {spots}
+Stated acceptance rate: {acceptance_rate}
+Estimated chance score: {chance}%
+
+Raw scraped description:
+{description}"""
+
 FIT_SYSTEM = (
     "You are a career advisor for Armenian STEM students. Compare a student's "
     "documents against an opportunity's requirements. Be concrete and honest. "

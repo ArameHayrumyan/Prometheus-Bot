@@ -7,6 +7,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# Fresh CA bundle for TLS verification against sites with newer chains
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 # CPU-only torch first (much smaller than the default CUDA build)
 RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
 

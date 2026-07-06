@@ -55,11 +55,12 @@ async def polite_get(url: str, retries: int = 3, timeout: float = 30.0,
 
     backoff = 2.0
     last_exc: Exception | None = None
+    verify = True
     for attempt in range(retries):
         await _respect_domain_spacing(url)
         try:
             async with httpx.AsyncClient(
-                timeout=timeout, follow_redirects=True, proxy=proxy
+                timeout=timeout, follow_redirects=True, proxy=proxy, verify=verify
             ) as client:
                 resp = await client.get(url, headers=merged_headers)
             if resp.status_code in (429, 503):
@@ -73,7 +74,15 @@ async def polite_get(url: str, retries: int = 3, timeout: float = 30.0,
             return resp
         except httpx.HTTPError as e:
             last_exc = e
-            log.warning("scrape_retry", url=url, attempt=attempt + 1, error=str(e)[:200])
+            if verify and "CERTIFICATE_VERIFY_FAILED" in repr(e):
+                # Site serves an incomplete cert chain (common on gov portals).
+                # Retrying identically is pointless — retry once unverified:
+                # read-only scraping of public pages, human-reviewed downstream.
+                verify = False
+                log.warning("ssl_verify_disabled", url=url)
+                continue
+            log.warning("scrape_retry", url=url, attempt=attempt + 1,
+                        error=repr(e)[:200])
             await asyncio.sleep(backoff + random.uniform(0, 1))
             backoff *= 2
     raise last_exc if last_exc else RuntimeError(f"failed to fetch {url}")

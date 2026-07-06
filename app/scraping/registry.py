@@ -40,7 +40,8 @@ async def fetch_source(session: AsyncSession, source: Source) -> list[RawOpportu
     try:
         items = await handler.fetch(source)
     except Exception as e:
-        log.warning("source_fetch_failed", source=source.name, error=str(e)[:300])
+        # repr(): str() of httpx timeout errors is often empty
+        log.warning("source_fetch_failed", source=source.name, error=repr(e)[:300])
         return []
     source.last_checked_at = datetime.now(timezone.utc)
     return items

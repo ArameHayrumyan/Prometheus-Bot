@@ -26,6 +26,7 @@ ADMIN_COMMANDS = STUDENT_COMMANDS + [
     BotCommand(command="queue", description="📥 Review queue"),
     BotCommand(command="discards", description="🗑 Discard log"),
     BotCommand(command="stats", description="📊 Pipeline stats"),
+    BotCommand(command="scrape", description="🔄 Scrape now (rss/webpage/…/all)"),
     BotCommand(command="listsources", description="🗂 Source registry"),
     BotCommand(command="addsource", description="➕ Add source"),
     BotCommand(command="listfields", description="🔬 Field taxonomy"),

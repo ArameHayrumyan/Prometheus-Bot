@@ -1,4 +1,6 @@
-"""Source registry management: /addsource, /listsources, /togglesource."""
+"""Source registry management: /addsource, /listsources, /togglesource, /scrape."""
+import asyncio
+
 from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
@@ -8,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.handlers.admin import IsAdmin
 from app.constants import SourceType
 from app.db.models import AdminAction, Source
+from app.scheduler.jobs import run_source_types
 
 router = Router()
 router.message.filter(IsAdmin())
@@ -69,6 +72,37 @@ async def cmd_listsources(message: Message, session: AsyncSession):
     text = "\n".join(lines)
     for i in range(0, len(text), 3900):
         await message.answer(text[i:i + 3900], parse_mode="HTML" if i == 0 else None)
+
+
+@router.message(Command("scrape"))
+async def cmd_scrape(message: Message, command: CommandObject):
+    """Trigger a scrape cycle immediately instead of waiting for the scheduler."""
+    valid = [s.value for s in SourceType]
+    arg = (command.args or "rss").strip().lower()
+    types = valid if arg == "all" else [arg]
+    if arg != "all" and arg not in valid:
+        await message.answer(f"Usage: /scrape <{'|'.join(valid)}|all>\n"
+                             "Default: rss. «all» can take many minutes "
+                             "(polite per-domain spacing across ~100 sources).")
+        return
+    await message.answer(f"🔄 Scraping now: {', '.join(types)} — I'll DM you when the "
+                         "cycle finishes.")
+    bot = message.bot
+    chat_id = message.chat.id
+
+    async def run():
+        try:
+            n = await run_source_types(bot, types, notify_admins=False)
+            summary = (f"✅ Cycle done ({', '.join(types)}): {n} new item(s) queued — /queue"
+                       if n else
+                       f"✅ Cycle done ({', '.join(types)}): nothing new queued. "
+                       "/discards shows what was filtered; duplicates of already-seen "
+                       "items are skipped silently.")
+            await bot.send_message(chat_id, summary)
+        except Exception as e:
+            await bot.send_message(chat_id, f"⚠️ Scrape cycle failed: {str(e)[:300]}")
+
+    asyncio.create_task(run())
 
 
 @router.message(Command("togglesource"))

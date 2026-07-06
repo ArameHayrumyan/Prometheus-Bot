@@ -18,9 +18,11 @@ from app.pipeline.ingest import process_raw
 log = get_logger("scheduler")
 
 
-async def run_source_types(bot: Bot, source_types: list[str]) -> None:
+async def run_source_types(bot: Bot, source_types: list[str],
+                           notify_admins: bool = True) -> int:
     """Fetch every active source of the given types; each source gets its own
-    transaction so one failure never poisons the batch."""
+    transaction so one failure never poisons the batch. Returns the number of
+    new items queued for review."""
     settings = get_settings()
     new_pending = 0
     async with session_scope() as session:
@@ -39,7 +41,7 @@ async def run_source_types(bot: Bot, source_types: list[str]) -> None:
                         new_pending += 1
         except Exception as e:
             log.error("source_job_failed", source_id=source_id, error=str(e)[:300])
-    if new_pending:
+    if new_pending and notify_admins:
         for admin_id in settings.admin_ids:
             try:
                 await bot.send_message(
@@ -50,6 +52,7 @@ async def run_source_types(bot: Bot, source_types: list[str]) -> None:
             except Exception as e:
                 log.info("admin_notify_failed", admin=admin_id, error=str(e)[:150])
     log.info("scrape_cycle_done", types=source_types, new_pending=new_pending)
+    return new_pending
 
 
 async def update_reputation() -> None:

@@ -252,11 +252,18 @@ From your admin account:
 
 ### Test 3 — the pipeline actually ingests
 
-You *can* wait for the first cycles (RSS ≤ 20 min), but for a deterministic
-test, force a fast cycle:
+Don't wait for the scheduler (interval jobs fire their *first* run one full
+interval after startup — 20 min for RSS, 4 h for webpages). Trigger a cycle
+on demand from your admin account:
 
-1. Stop the bot. In `.env` set `RSS_POLL_MINUTES=2`.
-2. Start it, wait ~3 minutes, watch logs.
+```
+/scrape           ← runs the RSS sources now (fastest, ~1-2 min)
+/scrape webpage   ← runs all webpage sources (several minutes, polite spacing)
+/scrape all       ← everything; can take a long while, fine to leave running
+```
+
+The bot replies immediately, then DMs a summary when the cycle finishes
+("N new items queued" or "nothing new queued"). Meanwhile, watch the logs:
 
 ✅ **Pass:** log lines like
 
@@ -277,8 +284,8 @@ die at the hard gate. Inspect them with `/discards`; each shows its reason
 ⚠️ If *every* item is discarded and `/queue` stays empty after several cycles,
 check `/discards` reasons: all-`field:` means taxonomy keywords are too narrow
 (`/listfields`, `/addfield`); all-`funding:` is expected from fee-heavy sources.
-
-Restore `RSS_POLL_MINUTES=20` afterwards.
+Re-running `/scrape` right away and getting "nothing new queued" is also
+correct — already-seen items are deduplicated silently.
 
 ### Test 4 — review queue & publishing
 

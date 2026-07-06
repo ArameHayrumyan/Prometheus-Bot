@@ -182,6 +182,7 @@ bot's scheduler traffic prevents that.
 | `/queue` | review pending items (Approve / Reject / Edit / Skip) |
 | `/discards` | recent hard-gate/low-legitimacy/AI-rejected items |
 | `/stats` | pipeline counts per status |
+| `/scrape [type\|all]` | run a scrape cycle right now (default: rss) instead of waiting for the scheduler |
 | `/addsource <type> <url> [category[:js]] [name]` | add a scrape target (types: webpage, rss, email, community, linkedin) |
 | `/listsources`, `/togglesource <id>` | manage the registry |
 | `/addfield Name \| kw1, kw2`, `/listfields`, `/togglefield <id>` | field taxonomy |

@@ -9,3 +9,4 @@ venv/
 hf_cache/
 *.log
 .DS_Store
+.idea/

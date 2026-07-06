@@ -51,18 +51,18 @@ def build_detail_text(opp: Opportunity, user: User, weights: dict) -> str:
     lang = user.language
     lines = [f"<b>{_esc(opp.title)}</b>"]
     if opp.org:
-        lines.append(f"🏛 {_esc(opp.org)}")
+        lines.append(f"🏛 <i>{_esc(opp.org)}</i>")
     lines.append("")
-    lines.append(f"{t('detail_type', lang)}: {opp.opportunity_type}")
-    lines.append(f"{t('detail_funding', lang)}: {t('funding_' + opp.funding_tier, lang)}")
+    lines.append(f"{t('detail_type', lang)}: <b>{opp.opportunity_type}</b>")
+    lines.append(f"{t('detail_funding', lang)}: <b>{t('funding_' + opp.funding_tier, lang)}</b>")
     deadline = opp.deadline.isoformat() if opp.deadline else t("no_deadline", lang)
-    lines.append(f"{t('detail_deadline', lang)}: {deadline}")
+    lines.append(f"{t('detail_deadline', lang)}: <b>{deadline}</b>")
     if opp.duration_days:
         lines.append(f"{t('detail_duration', lang)}: ~{opp.duration_days}d")
     if opp.country:
         lines.append(f"{t('detail_country', lang)}: {_esc(opp.country)}")
     if opp.fields:
-        lines.append(f"{t('detail_fields', lang)}: {_esc(', '.join(opp.fields))}")
+        lines.append(f"{t('detail_fields', lang)}: {_esc(' · '.join(opp.fields))}")
     if opp.degree_levels:
         lines.append(f"{t('detail_degrees', lang)}: {', '.join(opp.degree_levels)}")
     lines.append("")
@@ -92,7 +92,8 @@ def build_detail_text(opp: Opportunity, user: User, weights: dict) -> str:
             lines.append(t("english_none_on_req", lang))
     if opp.requirements:
         lines.append("")
-        lines.append(f"<b>{t('detail_requirements', lang)}</b>: {_esc(opp.requirements[:800])}")
+        lines.append(f"<b>{t('detail_requirements', lang)}</b>")
+        lines.append(f"<blockquote expandable>{_esc(opp.requirements[:800])}</blockquote>")
     lines.append("")
     if user.onboarded:
         lines.append(f"{t('detail_chance_personal', lang)}: ~{personal_chance(opp, user, weights)}%")

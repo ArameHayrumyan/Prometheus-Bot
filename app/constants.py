@@ -26,6 +26,7 @@ class Eligibility(StrEnum):
 
 class OppStatus(StrEnum):
     PENDING_REVIEW = "PENDING_REVIEW"
+    ARCHIVED = "ARCHIVED"  # admin's "review later" shelf
     APPROVED = "APPROVED"
     PUBLISHED = "PUBLISHED"
     REJECTED = "REJECTED"

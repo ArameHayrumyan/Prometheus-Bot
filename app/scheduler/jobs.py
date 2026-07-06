@@ -113,8 +113,8 @@ async def expire_opportunities() -> None:
             update(Opportunity)
             .where(Opportunity.deadline.is_not(None),
                    Opportunity.deadline < date.today(),
-                   Opportunity.status.in_([OppStatus.PENDING_REVIEW, OppStatus.PUBLISHED,
-                                           OppStatus.APPROVED]))
+                   Opportunity.status.in_([OppStatus.PENDING_REVIEW, OppStatus.ARCHIVED,
+                                           OppStatus.PUBLISHED, OppStatus.APPROVED]))
             .values(status=OppStatus.EXPIRED)
         )
         log.info("expired_marked", count=result.rowcount)

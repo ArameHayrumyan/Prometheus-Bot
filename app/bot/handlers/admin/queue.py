@@ -1,4 +1,10 @@
-"""Admin review queue (§9): approve / reject / edit, discard log, stats."""
+"""Admin review queue (§9): approve / reject / edit / photo / archive,
+prev-next navigation, discard log, stats. Also the /archive shelf for
+"review later" items.
+
+Callback format: adm:<action>:<opp_id>:<mode> where mode is
+'p' (pending queue) or 'a' (archive shelf).
+"""
 import html
 
 from aiogram import F, Router
@@ -10,8 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.handlers.admin import IsAdmin
 from app.bot.keyboards import kb
-from app.bot.posting import (build_post_text, notify_saved_filters,
-                             publish_opportunity)
+from app.bot.posting import (FUNDING_LABEL, TYPE_EMOJI, build_post_text,
+                             notify_saved_filters, publish_opportunity)
 from app.bot.states import AdminEdit
 from app.constants import OppStatus
 from app.db.models import AdminAction, Opportunity
@@ -22,67 +28,104 @@ router.message.filter(IsAdmin())
 router.callback_query.filter(IsAdmin())
 log = get_logger("bot.admin.queue")
 
+MODE_STATUS = {"p": OppStatus.PENDING_REVIEW, "a": OppStatus.ARCHIVED}
+MODE_TITLE = {"p": "📥 Review queue", "a": "🗂 Archive"}
+
 
 def _esc(s: str) -> str:
     return html.escape(s or "", quote=False)
 
 
-def queue_card(opp: Opportunity, pending_total: int) -> str:
+def queue_card(opp: Opportunity, total: int, mode: str) -> str:
+    emoji = TYPE_EMOJI.get(opp.opportunity_type, "✨")
+    lines = [
+        f"{MODE_TITLE[mode]} · <b>{total}</b> item{'s' if total != 1 else ''}",
+        f"{emoji} <b>{opp.opportunity_type.upper()}</b>  ·  #opp{opp.id}",
+        "",
+        f"<b>{_esc(opp.title)}</b>",
+    ]
+    if opp.org:
+        lines.append(f"🏛 <i>{_esc(opp.org)}</i>")
+    lines.append("")
+    lines.append(f"<blockquote expandable>{_esc(opp.description[:1500])}</blockquote>")
+    lines.append("")
+    facts = [
+        f"💰 {FUNDING_LABEL.get(opp.funding_tier, opp.funding_tier)}",
+        f"📅 {opp.deadline or 'no deadline stated'}   ⏱ {f'{opp.duration_days}d' if opp.duration_days else '—'}",
+        f"🎓 {', '.join(opp.degree_levels or []) or '—'}",
+        f"🔬 {', '.join(opp.fields or []) or '—'}",
+        f"⚖️ legitimacy <b>{opp.legitimacy_score}</b>/100   🎯 chance ~<b>{opp.chance_percent}%</b>",
+        f"🔗 {_esc(opp.url)}",
+    ]
+    lines.extend(facts)
     flags = []
     if opp.armenian_eligibility == "UNCERTAIN":
         flags.append("⚠️ <b>UNCERTAIN Armenian eligibility</b> — verify before approving")
+    if opp.english_req_score is not None:
+        flags.append(f"🇬🇧 requires {opp.english_req_test} {opp.english_req_score:g}")
+    if opp.image_file_id:
+        flags.append("🖼 photo attached")
+    if opp.edited_text:
+        flags.append("✏️ body edited")
     if opp.ai_verdict:
         v = opp.ai_verdict
-        flags.append(f"🤖 AI tiebreak: {v.get('verdict')} ({v.get('confidence')}%) — {_esc(v.get('reason', ''))}")
-    lines = [
-        f"📥 <b>Review queue</b> ({pending_total} pending) — #opp{opp.id}",
-        "",
-        f"<b>{_esc(opp.title)}</b>",
-        f"🏛 {_esc(opp.org or 'unknown org')} | {opp.opportunity_type} | {opp.funding_tier}",
-        f"🎓 {', '.join(opp.degree_levels or [])} | 🔬 {', '.join(opp.fields or [])}",
-        f"📅 deadline: {opp.deadline or '—'} | ⏱ {opp.duration_days or '—'}d",
-        f"⚖️ legitimacy: {opp.legitimacy_score} | 🎯 chance: {opp.chance_percent}%",
-        f"🔗 {_esc(opp.url)}",
-        "",
-        _esc(opp.description[:800]),
-    ]
+        flags.append(f"🤖 AI tiebreak: {v.get('verdict')} ({v.get('confidence')}%) — "
+                     f"<i>{_esc(str(v.get('reason', ''))[:150])}</i>")
     if flags:
-        lines.insert(1, "\n".join(flags))
+        lines.append("")
+        lines.extend(flags)
     return "\n".join(lines)[:4096]
 
 
-def queue_kb(opp_id: int):
+def queue_kb(opp_id: int, mode: str = "p"):
+    shelf = ("🗂 Later", f"adm:archive:{opp_id}:{mode}") if mode == "p" \
+        else ("📥 Back to queue", f"adm:archive:{opp_id}:{mode}")
     return kb([
-        [("✅ Approve", f"adm:approve:{opp_id}"),
-         ("❌ Reject", f"adm:reject:{opp_id}")],
-        [("✏️ Edit", f"adm:edit:{opp_id}"),
-         ("⏭ Skip", f"adm:skip:{opp_id}")],
+        [("✅ Approve", f"adm:approve:{opp_id}:{mode}"),
+         ("❌ Reject", f"adm:reject:{opp_id}:{mode}")],
+        [("✏️ Edit text", f"adm:edit:{opp_id}:{mode}"),
+         ("🖼 Photo", f"adm:photo:{opp_id}:{mode}")],
+        [("◀️", f"adm:prev:{opp_id}:{mode}"),
+         shelf,
+         ("▶️", f"adm:skip:{opp_id}:{mode}")],
     ])
 
 
-async def _next_pending(session: AsyncSession, after_id: int = 0) -> tuple[Opportunity | None, int]:
-    total = (await session.execute(
+async def _count(session: AsyncSession, mode: str) -> int:
+    return (await session.execute(
         select(func.count()).select_from(Opportunity)
-        .where(Opportunity.status == OppStatus.PENDING_REVIEW)
+        .where(Opportunity.status == MODE_STATUS[mode])
     )).scalar_one()
-    opp = (await session.execute(
-        select(Opportunity)
-        .where(Opportunity.status == OppStatus.PENDING_REVIEW, Opportunity.id > after_id)
-        .order_by(Opportunity.id)
-        .limit(1)
-    )).scalar_one_or_none()
-    return opp, total
 
 
-async def show_queue(message: Message, session: AsyncSession, after_id: int = 0,
+async def _fetch_item(session: AsyncSession, mode: str, after_id: int = 0,
+                      before_id: int | None = None) -> Opportunity | None:
+    status = MODE_STATUS[mode]
+    if before_id is not None:
+        stmt = (select(Opportunity)
+                .where(Opportunity.status == status, Opportunity.id < before_id)
+                .order_by(Opportunity.id.desc()).limit(1))
+    else:
+        stmt = (select(Opportunity)
+                .where(Opportunity.status == status, Opportunity.id > after_id)
+                .order_by(Opportunity.id).limit(1))
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
+async def show_queue(message: Message, session: AsyncSession, mode: str = "p",
+                     after_id: int = 0, before_id: int | None = None,
                      edit: bool = False):
-    opp, total = await _next_pending(session, after_id)
+    total = await _count(session, mode)
+    opp = await _fetch_item(session, mode, after_id, before_id)
+    if opp is None and (after_id or before_id is not None):
+        # wrapped past either end — restart from the beginning
+        opp = await _fetch_item(session, mode, 0, None)
     if opp is None:
-        text = "📭 Review queue is empty."
+        text = "📭 Review queue is empty." if mode == "p" else "🗂 Archive is empty."
         await (message.edit_text(text) if edit else message.answer(text))
         return
-    text = queue_card(opp, total)
-    markup = queue_kb(opp.id)
+    text = queue_card(opp, total, mode)
+    markup = queue_kb(opp.id, mode)
     if edit:
         await message.edit_text(text, reply_markup=markup, parse_mode="HTML",
                                 disable_web_page_preview=True)
@@ -93,13 +136,19 @@ async def show_queue(message: Message, session: AsyncSession, after_id: int = 0,
 
 @router.message(Command("queue"))
 async def cmd_queue(message: Message, session: AsyncSession):
-    await show_queue(message, session)
+    await show_queue(message, session, mode="p")
+
+
+@router.message(Command("archive"))
+async def cmd_archive(message: Message, session: AsyncSession):
+    await show_queue(message, session, mode="a")
 
 
 @router.callback_query(F.data.startswith("adm:"))
 async def cb_admin(query: CallbackQuery, session: AsyncSession, state: FSMContext):
-    _, action, opp_id_s = query.data.split(":")
-    opp_id = int(opp_id_s)
+    parts = query.data.split(":")
+    action, opp_id = parts[1], int(parts[2])
+    mode = parts[3] if len(parts) > 3 else "p"
     opp = await session.get(Opportunity, opp_id)
     if opp is None:
         await query.answer("Gone")
@@ -107,7 +156,28 @@ async def cb_admin(query: CallbackQuery, session: AsyncSession, state: FSMContex
 
     if action == "skip":
         await query.answer()
-        await show_queue(query.message, session, after_id=opp_id, edit=True)
+        await show_queue(query.message, session, mode, after_id=opp_id, edit=True)
+        return
+
+    if action == "prev":
+        await query.answer()
+        await show_queue(query.message, session, mode, before_id=opp_id, edit=True)
+        return
+
+    if action == "archive":
+        if mode == "p":
+            opp.status = OppStatus.ARCHIVED
+            session.add(AdminAction(admin_tg_id=query.from_user.id,
+                                    opportunity_id=opp.id, action="archive"))
+            await session.flush()
+            await query.answer("Shelved — see /archive")
+        else:
+            opp.status = OppStatus.PENDING_REVIEW
+            session.add(AdminAction(admin_tg_id=query.from_user.id,
+                                    opportunity_id=opp.id, action="unarchive"))
+            await session.flush()
+            await query.answer("Moved back to /queue")
+        await show_queue(query.message, session, mode, after_id=opp_id, edit=True)
         return
 
     if action == "reject":
@@ -116,7 +186,7 @@ async def cb_admin(query: CallbackQuery, session: AsyncSession, state: FSMContex
                                 action="reject"))
         await session.flush()
         await query.answer("Rejected")
-        await show_queue(query.message, session, edit=True)
+        await show_queue(query.message, session, mode, after_id=opp_id, edit=True)
         return
 
     if action == "approve":
@@ -128,12 +198,12 @@ async def cb_admin(query: CallbackQuery, session: AsyncSession, state: FSMContex
         await query.answer(f"Published to {posted} channel(s)")
         if posted:
             await notify_saved_filters(query.bot, session, opp)
-        await show_queue(query.message, session, edit=True)
+        await show_queue(query.message, session, mode, after_id=opp_id, edit=True)
         return
 
     if action == "edit":
         await state.set_state(AdminEdit.waiting_text)
-        await state.update_data(edit_opp_id=opp_id)
+        await state.update_data(edit_opp_id=opp_id, edit_mode=mode)
         await query.answer()
         await query.message.answer(
             f"✏️ Editing #opp{opp_id}. Send the new post <b>body</b> text "
@@ -141,13 +211,23 @@ async def cb_admin(query: CallbackQuery, session: AsyncSession, state: FSMContex
             "are auto-generated and cannot be edited. Send /cancel to abort.",
             parse_mode="HTML",
         )
+        return
+
+    if action == "photo":
+        await state.set_state(AdminEdit.waiting_photo)
+        await state.update_data(edit_opp_id=opp_id, edit_mode=mode)
+        await query.answer()
+        await query.message.answer(
+            f"🖼 Send a photo to attach to #opp{opp_id} "
+            "(it becomes the post image on publish), or /cancel.",
+        )
 
 
 @router.message(Command("cancel"), AdminEdit.waiting_text)
 @router.message(Command("cancel"), AdminEdit.waiting_photo)
 async def cancel_edit(message: Message, state: FSMContext):
     await state.clear()
-    await message.answer("Edit cancelled.")
+    await message.answer("Cancelled.")
 
 
 @router.message(AdminEdit.waiting_text)
@@ -163,8 +243,8 @@ async def edit_text(message: Message, session: AsyncSession, state: FSMContext):
     await session.flush()
     await state.set_state(AdminEdit.waiting_photo)
     await message.answer(
-        "Body updated. Now send an <b>image</b> for the post, or /skip to keep none, "
-        "or /cancel.", parse_mode="HTML",
+        "Body updated. Now send an <b>image</b> for the post, or /skip to keep "
+        "the current one, or /cancel.", parse_mode="HTML",
     )
 
 
@@ -187,15 +267,19 @@ async def edit_photo(message: Message, session: AsyncSession, state: FSMContext)
 
 async def _finish_edit(message: Message, session: AsyncSession, state: FSMContext):
     data = await state.get_data()
+    mode = data.get("edit_mode", "p")
     opp = await session.get(Opportunity, data["edit_opp_id"])
     await state.clear()
     if opp is None:
         return
-    await message.answer("Preview:", parse_mode="HTML")
-    await message.answer(build_post_text(opp)[:4096], parse_mode="HTML",
-                         disable_web_page_preview=True)
-    await message.answer("Use /queue to continue reviewing.",
-                         reply_markup=queue_kb(opp.id))
+    await message.answer("Preview of the post as it will publish:")
+    preview = build_post_text(opp)[:4096]
+    if opp.image_file_id:
+        await message.answer_photo(opp.image_file_id, caption=preview[:1024],
+                                   parse_mode="HTML")
+    else:
+        await message.answer(preview, parse_mode="HTML", disable_web_page_preview=True)
+    await message.answer("Actions:", reply_markup=queue_kb(opp.id, mode))
 
 
 @router.message(Command("discards"))
@@ -211,7 +295,7 @@ async def cmd_discards(message: Message, session: AsyncSession):
         return
     lines = ["🗑 <b>Last discarded items</b> (hard gate / low legitimacy / AI tiebreak):", ""]
     for opp in rows:
-        lines.append(f"• <b>{_esc(opp.title[:80])}</b>\n  ↳ {_esc(opp.discard_reason or '')}")
+        lines.append(f"• <b>{_esc(opp.title[:80])}</b>\n  ↳ <i>{_esc(opp.discard_reason or '')}</i>")
     await message.answer("\n".join(lines)[:4096], parse_mode="HTML",
                          disable_web_page_preview=True)
 
@@ -221,7 +305,13 @@ async def cmd_stats(message: Message, session: AsyncSession):
     counts = dict((await session.execute(
         select(Opportunity.status, func.count()).group_by(Opportunity.status)
     )).all())
+    labels = [
+        ("PENDING_REVIEW", "📥 pending"), ("ARCHIVED", "🗂 archived"),
+        ("PUBLISHED", "📣 published"), ("APPROVED", "✅ approved"),
+        ("REJECTED", "❌ rejected"), ("DISCARDED", "🗑 discarded"),
+        ("EXPIRED", "⌛ expired"),
+    ]
     lines = ["📊 <b>Pipeline stats</b>", ""]
-    for status in ("PENDING_REVIEW", "APPROVED", "PUBLISHED", "REJECTED", "DISCARDED", "EXPIRED"):
-        lines.append(f"{status}: {counts.get(status, 0)}")
+    for status, label in labels:
+        lines.append(f"{label}: <b>{counts.get(status, 0)}</b>")
     await message.answer("\n".join(lines), parse_mode="HTML")

@@ -23,6 +23,16 @@ TYPE_EMOJI = {
     "training": "📚", "job": "💼", "hackathon": "🏆",
 }
 
+# Compact English labels used on admin cards (student posts use i18n keys)
+FUNDING_LABEL = {
+    "FULLY_FUNDED": "Fully funded",
+    "MOSTLY_FUNDED_ACCEPTABLE": "Mostly funded",
+    "STUDENT_PAYS": "Student pays",
+    "UNKNOWN": "Funding unclear",
+}
+
+DEGREE_TAG = {"undergrad": "#undergrad", "masters": "#masters", "phd": "#phd"}
+
 
 def _esc(s: str) -> str:
     return html.escape(s or "", quote=False)
@@ -31,37 +41,40 @@ def _esc(s: str) -> str:
 def default_body(opp: Opportunity) -> str:
     lines = [f"<b>{_esc(opp.title)}</b>"]
     if opp.org:
-        lines.append(f"🏛 {_esc(opp.org)}")
-    lines.append("")
-    desc = opp.description[:600]
-    if len(opp.description) > 600:
+        lines.append(f"🏛 <i>{_esc(opp.org)}</i>")
+    desc = opp.description[:900]
+    if len(opp.description) > 900:
         desc += "…"
-    lines.append(_esc(desc))
+    if desc.strip():
+        lines.append("")
+        lines.append(f"<blockquote expandable>{_esc(desc)}</blockquote>")
     return "\n".join(lines)
 
 
 def build_post_text(opp: Opportunity, lang: str = "en") -> str:
     emoji = TYPE_EMOJI.get(opp.opportunity_type, "✨")
     header = f"{emoji} <b>{opp.opportunity_type.upper()}</b>"
+    if opp.country:
+        header += f"  ·  🌍 {_esc(opp.country)}"
     body = opp.edited_text if opp.edited_text else default_body(opp)
 
     facts = []
-    facts.append(f"{t('detail_funding', lang)}: {t('funding_' + opp.funding_tier, lang)}")
+    facts.append(f"💰 <b>{t('funding_' + opp.funding_tier, lang)}</b>")
     deadline = opp.deadline.isoformat() if opp.deadline else t("no_deadline", lang)
-    facts.append(f"{t('detail_deadline', lang)}: {deadline}")
-    if opp.country:
-        facts.append(f"{t('detail_country', lang)}: {_esc(opp.country)}")
+    facts.append(f"📅 {t('detail_deadline', lang)}: <b>{deadline}</b>")
     if opp.fields:
-        facts.append(f"{t('detail_fields', lang)}: {_esc(', '.join(opp.fields))}")
-    facts.append(f"{t('detail_chance', lang)}: ~{opp.chance_percent}%")
-    facts.append(t("eligibility_" + opp.armenian_eligibility, lang)
-                 if opp.armenian_eligibility in ("ELIGIBLE", "UNCERTAIN") else "")
+        facts.append(f"🔬 {_esc(' · '.join(opp.fields))}")
     if opp.english_req_score is not None:
         facts.append(t("english_req", lang,
                        req=f"{opp.english_req_test} {opp.english_req_score:g}"))
+    facts.append(f"🎯 {t('detail_chance', lang)}: <b>~{opp.chance_percent}%</b>")
+    if opp.armenian_eligibility in ("ELIGIBLE", "UNCERTAIN"):
+        facts.append(t("eligibility_" + opp.armenian_eligibility, lang))
 
-    footer = f"#opp{opp.id} #{opp.opportunity_type}"
-    return "\n\n".join([header, body, "\n".join(f for f in facts if f), footer])
+    tags = [f"#opp{opp.id}", f"#{opp.opportunity_type}"]
+    tags += [DEGREE_TAG[d] for d in (opp.degree_levels or []) if d in DEGREE_TAG]
+    footer = f"<i>{' '.join(tags)}</i>"
+    return "\n\n".join([header, body, "\n".join(facts), footer])
 
 
 def build_post_keyboard(opp: Opportunity, bot_username: str, lang: str = "en") -> InlineKeyboardMarkup:

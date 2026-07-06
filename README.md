@@ -179,7 +179,8 @@ bot's scheduler traffic prevents that.
 
 | Command | What it does |
 |---|---|
-| `/queue` | review pending items (Approve / Reject / Edit / Skip) |
+| `/queue` | review pending items (Approve / Reject / Edit / Photo / ◀️▶️ nav / 🗂 Later) |
+| `/archive` | the "review later" shelf; items can be approved there or sent back to the queue |
 | `/discards` | recent hard-gate/low-legitimacy/AI-rejected items |
 | `/stats` | pipeline counts per status |
 | `/scrape [type\|all]` | run a scrape cycle right now (default: rss) instead of waiting for the scheduler |

@@ -197,13 +197,18 @@ approve borderline items.
 
 **Approve flow with AI enrichment:** tapping Approve makes one capped AI call
 that generates a clean TL;DR, a competitiveness read and requirement bullets,
-then shows a preview with ✅ Publish / ✏️ Edit first / ↩️ Publish original.
-On cap or AI failure the item publishes immediately with the regex content.
+then shows a preview with a **channel picker** (Undergrad/Masters/PhD toggles,
+pre-checked from detected degree levels) and 🚀 Publish / ✏️ Edit first /
+↩️ Use original. On cap or AI failure the preview shows the regex content.
+**Nothing ever posts to a channel without an explicit admin tap** — including
+the weekly digest, which arrives as an admin preview with Post/Skip buttons
+(or on demand via /digest).
 
 **Student-side:** ⭐ Save on every post → `/saved` list with deadline
 reminders (7/3/1 days before, 10:00 Yerevan), ✅ Applied tracking with
 outcome follow-ups ~30 days after each deadline, and a Sunday-evening
-top-5 "closing soon" digest per channel (skipped when under 3 open items).
+top-5 "closing soon" digest per channel (admin-approved before posting,
+skipped when under 3 open items).
 
 ## Project layout
 

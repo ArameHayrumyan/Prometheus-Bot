@@ -93,12 +93,82 @@ def queue_kb(opp_id: int, mode: str = "p"):
     ])
 
 
+def preview_kb(opp: Opportunity, mode: str, mask: int):
+    from app.bot.posting import DEGREE_BITS
+
+    toggles = [
+        (("✅ " if mask & bit else "⬜ ") + code.capitalize(),
+         f"admch:{opp.id}:{mode}:{mask}:{bit}")
+        for code, bit in DEGREE_BITS.items()
+    ]
+    rows = [toggles,
+            [("🚀 Publish to selected", f"admpub:{opp.id}:{mode}:{mask}"),
+             ("✏️ Edit first", f"adm:edit:{opp.id}:{mode}")]]
+    if opp.enrichment:
+        rows.append([("↩️ Use original (no AI)", f"adm:orig:{opp.id}:{mode}")])
+    rows.append([("◀️ Back to queue", f"adm:skip:{opp.id - 1}:{mode}")])
+    return kb(rows)
+
+
+async def _send_preview(message: Message, opp: Opportunity, mode: str,
+                        note: str = "", replace: bool = False) -> None:
+    from app.bot.posting import mask_from_levels
+
+    mask = mask_from_levels(opp.degree_levels or [])
+    text = (note + build_post_text(opp))[:4096]
+    markup = preview_kb(opp, mode, mask)
+    if replace:
+        try:
+            await message.edit_text(text, parse_mode="HTML",
+                                    disable_web_page_preview=True, reply_markup=markup)
+            return
+        except Exception:
+            pass
+    if opp.image_file_id:
+        await message.answer_photo(opp.image_file_id, caption=text[:1024],
+                                   parse_mode="HTML", reply_markup=markup)
+    else:
+        await message.answer(text, parse_mode="HTML",
+                             disable_web_page_preview=True, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("admch:"))
+async def cb_channel_toggle(query: CallbackQuery, session: AsyncSession):
+    _, opp_id, mode, mask, bit = query.data.split(":")
+    opp = await session.get(Opportunity, int(opp_id))
+    await query.answer()
+    if opp is None:
+        return
+    try:
+        await query.message.edit_reply_markup(
+            reply_markup=preview_kb(opp, mode, int(mask) ^ int(bit)))
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.startswith("admpub:"))
+async def cb_publish(query: CallbackQuery, session: AsyncSession):
+    from app.bot.posting import levels_from_mask
+
+    _, opp_id, mode, mask = query.data.split(":")
+    if int(mask) == 0:
+        await query.answer("Select at least one channel first", show_alert=True)
+        return
+    opp = await session.get(Opportunity, int(opp_id))
+    if opp is None:
+        await query.answer("Gone")
+        return
+    await _publish_now(query, session, opp, mode, degree_codes=levels_from_mask(int(mask)))
+
+
 async def _publish_now(query: CallbackQuery, session: AsyncSession,
-                       opp: Opportunity, mode: str, note: str = "") -> None:
+                       opp: Opportunity, mode: str,
+                       degree_codes: list[str] | None = None, note: str = "") -> None:
     session.add(AdminAction(admin_tg_id=query.from_user.id, opportunity_id=opp.id,
-                            action="approve"))
+                            action="approve",
+                            payload={"channels": degree_codes or opp.degree_levels}))
     opp.status = OppStatus.APPROVED
-    posted = await publish_opportunity(query.bot, session, opp)
+    posted = await publish_opportunity(query.bot, session, opp, degree_codes)
     await session.flush()
     await query.answer(f"Published to {posted} channel(s) {note}".strip())
     if posted:
@@ -214,37 +284,19 @@ async def cb_admin(query: CallbackQuery, session: AsyncSession, state: FSMContex
         return
 
     if action == "approve":
-        # AI enrichment step: one call, capped daily, cached on the row.
-        # On cap/failure -> publish immediately with the regex content (old path).
+        # AI enrichment (one capped call, cached on the row). Whether or not
+        # it succeeds, NOTHING publishes without the explicit 🚀 tap below.
         await query.answer("✨ Enriching…" if not opp.enrichment else "Preview")
         enrichment = await enrich_opportunity(session, opp)
-        if enrichment is None:
-            await _publish_now(query, session, opp, mode, note="(no AI: cap/failure)")
-            return
-        preview = build_post_text(opp)
-        preview_kb = kb([
-            [("✅ Publish", f"adm:pub:{opp.id}:{mode}"),
-             ("✏️ Edit first", f"adm:edit:{opp.id}:{mode}")],
-            [("↩️ Publish original (no AI)", f"adm:orig:{opp.id}:{mode}")],
-            [("◀️ Back to queue", f"adm:skip:{opp.id - 1}:{mode}")],
-        ])
-        if opp.image_file_id:
-            await query.message.answer_photo(opp.image_file_id, caption=preview[:1024],
-                                             parse_mode="HTML", reply_markup=preview_kb)
-        else:
-            await query.message.answer(preview[:4096], parse_mode="HTML",
-                                       disable_web_page_preview=True,
-                                       reply_markup=preview_kb)
-        return
-
-    if action == "pub":
-        await _publish_now(query, session, opp, mode)
+        note = "" if enrichment else "⚠️ AI unavailable (cap/failure) — original text.\n"
+        await _send_preview(query.message, opp, mode, note=note)
         return
 
     if action == "orig":
-        opp.enrichment = None  # discard the AI version for this post
+        opp.enrichment = None  # discard the AI version; preview the original
         await session.flush()
-        await _publish_now(query, session, opp, mode, note="(original text)")
+        await query.answer("AI version discarded")
+        await _send_preview(query.message, opp, mode, replace=True)
         return
 
     if action == "edit":
@@ -326,6 +378,59 @@ async def _finish_edit(message: Message, session: AsyncSession, state: FSMContex
     else:
         await message.answer(preview, parse_mode="HTML", disable_web_page_preview=True)
     await message.answer("Actions:", reply_markup=queue_kb(opp.id, mode))
+
+
+@router.message(Command("digest"))
+async def cmd_digest(message: Message, session: AsyncSession):
+    """Compile digest previews on demand (same as the Sunday job)."""
+    from app.scheduler.jobs import weekly_digest
+
+    await message.answer("🗓 Compiling digest previews…")
+    await weekly_digest(message.bot)
+
+
+@router.callback_query(F.data.startswith("dg:"))
+async def cb_digest(query: CallbackQuery, session: AsyncSession):
+    from datetime import date
+
+    from sqlalchemy import select as sa_select
+
+    from app.db.models import Channel
+    from app.scheduler.jobs import build_digest_text
+
+    _, action, code = query.data.split(":")
+    if action == "skip":
+        await query.answer("Skipped this week")
+        try:
+            await query.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        return
+    channel = (await session.execute(
+        sa_select(Channel).where(Channel.degree_level_code == code)
+    )).scalar_one_or_none()
+    if channel is None:
+        await query.answer("Channel not configured")
+        return
+    me = await query.bot.get_me()
+    # rebuild at post time so the digest reflects the current state
+    text = await build_digest_text(session, channel, me.username or "", date.today())
+    if text is None:
+        await query.answer("Not enough open items anymore", show_alert=True)
+        return
+    try:
+        await query.bot.send_message(channel.tg_channel_id, text, parse_mode="HTML",
+                                     disable_web_page_preview=True)
+    except Exception as e:
+        await query.answer(f"Failed: {str(e)[:150]}", show_alert=True)
+        return
+    session.add(AdminAction(admin_tg_id=query.from_user.id, action="digest_post",
+                            payload={"channel": code}))
+    await query.answer("📣 Posted")
+    try:
+        await query.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
 
 
 @router.message(Command("discards"))

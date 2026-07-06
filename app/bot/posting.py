@@ -34,6 +34,17 @@ FUNDING_LABEL = {
 
 DEGREE_TAG = {"undergrad": "#undergrad", "masters": "#masters", "phd": "#phd"}
 
+# Bitmask for the admin channel-picker (encoded in callback data)
+DEGREE_BITS = {"undergrad": 1, "masters": 2, "phd": 4}
+
+
+def mask_from_levels(levels: list[str]) -> int:
+    return sum(DEGREE_BITS.get(code, 0) for code in (levels or []))
+
+
+def levels_from_mask(mask: int) -> list[str]:
+    return [code for code, bit in DEGREE_BITS.items() if mask & bit]
+
 
 def _esc(s: str) -> str:
     return html.escape(s or "", quote=False)
@@ -115,14 +126,16 @@ def build_post_keyboard(opp: Opportunity, bot_username: str, lang: str = "en",
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def publish_opportunity(bot: Bot, session: AsyncSession, opp: Opportunity) -> int:
-    """Post to every channel matching the opportunity's degree levels.
-    Returns the number of channels posted to."""
+async def publish_opportunity(bot: Bot, session: AsyncSession, opp: Opportunity,
+                              degree_codes: list[str] | None = None) -> int:
+    """Post to the selected channels (admin's channel picker), defaulting to
+    the opportunity's detected degree levels. Returns channels posted to."""
+    target = degree_codes if degree_codes is not None else (opp.degree_levels or [])
     me = await bot.get_me()
     text = build_post_text(opp)
     keyboard = build_post_keyboard(opp, me.username or "")
     channels = (await session.execute(
-        select(Channel).where(Channel.degree_level_code.in_(opp.degree_levels or []))
+        select(Channel).where(Channel.degree_level_code.in_(target))
     )).scalars().all()
 
     posted = 0

@@ -226,43 +226,61 @@ def pick_digest_items(opps: list, limit: int = 5, minimum: int = 3) -> list:
     return ranked[:limit]
 
 
+async def build_digest_text(session, channel: Channel, bot_username: str,
+                            today: date) -> str | None:
+    """Compile a channel's closing-soon digest, or None when under the minimum."""
+    opps = (await session.execute(
+        select(Opportunity)
+        .where(Opportunity.status == OppStatus.PUBLISHED,
+               Opportunity.degree_levels.contains([channel.degree_level_code]),
+               Opportunity.deadline.is_not(None),
+               Opportunity.deadline >= today,
+               Opportunity.deadline <= today + timedelta(days=60))
+    )).scalars().all()
+    picked = pick_digest_items(list(opps))
+    if not picked:
+        return None
+    lines = ["🗓 <b>Weekly digest — closing soon</b>", ""]
+    for i, opp in enumerate(picked, 1):
+        days_left = (opp.deadline - today).days
+        link = f"https://t.me/{bot_username}?start=opp_{opp.id}"
+        lines.append(
+            f"{i}. <a href=\"{link}\">{html.escape(opp.title[:80], quote=False)}</a>\n"
+            f"   📅 {opp.deadline} ({days_left}d left) · 🎯 ~{opp.chance_percent}%"
+        )
+    lines.append("")
+    lines.append("<i>⭐ Save any post to get deadline reminders.</i>")
+    return "\n".join(lines)[:4096]
+
+
 async def weekly_digest(bot: Bot) -> None:
-    """Sunday 19:00 Yerevan: per-channel top-5 closing-soon digest.
-    Zero AI tokens — assembled entirely from stored data."""
+    """Sunday 19:00 Yerevan: compile per-channel digests and send them to the
+    ADMINS for approval — nothing is ever posted to a channel automatically."""
+    from app.bot.keyboards import kb
+
     me = await bot.get_me()
     today = date.today()
+    settings = get_settings()
     async with session_scope() as session:
         channels = (await session.execute(select(Channel))).scalars().all()
         for channel in channels:
-            opps = (await session.execute(
-                select(Opportunity)
-                .where(Opportunity.status == OppStatus.PUBLISHED,
-                       Opportunity.degree_levels.contains([channel.degree_level_code]),
-                       Opportunity.deadline.is_not(None),
-                       Opportunity.deadline >= today,
-                       Opportunity.deadline <= today + timedelta(days=60))
-            )).scalars().all()
-            picked = pick_digest_items(list(opps))
-            if not picked:
-                log.info("digest_skipped", channel=channel.degree_level_code,
-                         open_items=len(opps))
+            text = await build_digest_text(session, channel, me.username or "", today)
+            if text is None:
+                log.info("digest_skipped", channel=channel.degree_level_code)
                 continue
-            lines = ["🗓 <b>Weekly digest — closing soon</b>", ""]
-            for i, opp in enumerate(picked, 1):
-                days_left = (opp.deadline - today).days
-                link = f"https://t.me/{me.username}?start=opp_{opp.id}"
-                lines.append(
-                    f"{i}. <a href=\"{link}\">{html.escape(opp.title[:80], quote=False)}</a>\n"
-                    f"   📅 {opp.deadline} ({days_left}d left) · 🎯 ~{opp.chance_percent}%"
-                )
-            lines.append("")
-            lines.append("<i>⭐ Save any post to get deadline reminders.</i>")
-            try:
-                await bot.send_message(channel.tg_channel_id, "\n".join(lines)[:4096],
-                                       parse_mode="HTML", disable_web_page_preview=True)
-            except Exception as e:
-                log.error("digest_failed", channel=channel.tg_channel_id,
-                          error=str(e)[:200])
+            code = channel.degree_level_code
+            preview = (f"🗓 Digest preview for <b>{code}</b> — post it?\n"
+                       f"{'─' * 20}\n\n{text}")
+            for admin_id in settings.admin_ids:
+                try:
+                    await bot.send_message(
+                        admin_id, preview[:4096], parse_mode="HTML",
+                        disable_web_page_preview=True,
+                        reply_markup=kb([[("📣 Post to channel", f"dg:post:{code}"),
+                                          ("✖️ Skip this week", f"dg:skip:{code}")]]),
+                    )
+                except Exception as e:
+                    log.info("digest_preview_failed", admin=admin_id, error=str(e)[:150])
 
 
 def setup_scheduler(bot: Bot) -> AsyncIOScheduler:

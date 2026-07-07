@@ -337,7 +337,29 @@ end-to-end (check `/ai_status` afterwards — request counts incremented).
 
 ✅ **Pass:** all take effect immediately, no restart.
 
-**All 8 green → the system is fully functional. Proceed to deploy.**
+### Test 9 (optional) — newsletter mailbox end-to-end
+
+Only if you configured `NEWSLETTER_IMAP_*`. This tests the whole email
+acquisition channel deterministically:
+
+1. From your personal email, send a message **to the dedicated mailbox**
+   containing an opportunity-shaped line, e.g.:
+   ```
+   Fully funded data science internship with stipend, open to all
+   nationalities: https://careers.example.org/ds-intern-2027
+   ```
+2. In the bot (admin): `/scrape email`
+
+✅ **Pass:** completion DM reports ≥1 new item; `/queue` shows it with
+`[newsletter: <your subject>]` at the start of its description.
+
+⚠️ `email_skipped_not_configured` in logs = IMAP vars are blank.
+`source_fetch_failed` with `LOGIN` in the error = wrong app password
+(it must be a Gmail App Password, not the account password).
+Nothing found on a re-run is correct — the email was marked read; mark it
+unread in Gmail to re-process it.
+
+**All green → the system is fully functional. Proceed to deploy.**
 
 ---
 

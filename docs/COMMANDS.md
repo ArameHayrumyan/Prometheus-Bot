@@ -2,6 +2,8 @@
 
 Every command with worked examples. The same content is available inside the
 bot: `/help` (students, bilingual) and `/adminhelp` (admins, English).
+For longer step-by-step recipes (with screenshots-in-text of each flow), see
+[GUIDES.md](GUIDES.md).
 
 ---
 

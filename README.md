@@ -34,7 +34,7 @@ the priorities:
 
 | Area | What you get |
 |---|---|
-| **Acquisition** | ~140 seeded sources across 5 typed handlers: web pages (httpx/BS4 + optional Playwright), RSS feeds, an IMAP newsletter mailbox, community boards (reddit/HN), LinkedIn guest search. New source = one `/addsource` command, zero code. |
+| **Acquisition** | ~140 seeded sources across 5 typed handlers: web pages (httpx/BS4 + optional Playwright), RSS feeds, an IMAP newsletter mailbox, community boards (reddit/HN), LinkedIn guest search. New source = one `/addsource` command; per-source CSS-selector precision via `/sourcemeta`; new newsletter = just subscribe the mailbox. Zero code either way. |
 | **Filtering** | 4-rule hard gate (funding / Armenian eligibility / field taxonomy / noise), then a rule-based legitimacy score. AI is called **only** for borderline scores, grounded via pgvector retrieval of past admin verdicts (RAG few-shot). |
 | **Scoring** | Weighted success-chance estimate from stated acceptance rates, spots, prestige/selectivity signals, and per-student requirement matching (degree, field, GPA, English score + expiry). All weights live-tunable. |
 | **Review** | Admin queue with list + card views, prev/next navigation, archive shelf, free-text/photo editing, AI post enrichment with preview, per-post channel picker. Full audit log. |
@@ -130,7 +130,10 @@ router console, scoring tunables, text customization and broadcast.
 
 Every command is documented with worked examples in
 **[docs/COMMANDS.md](docs/COMMANDS.md)** — the same content is available
-inside the bot via `/help` (students) and `/adminhelp` (admins).
+inside the bot via `/help` (students) and `/adminhelp` (admins). For
+step-by-step operational recipes (adding sources, CSS-selector precision
+mode, testing the email channel, the full review→publish path, text
+customization, pipeline tuning) see **[docs/GUIDES.md](docs/GUIDES.md)**.
 
 ## Project structure
 

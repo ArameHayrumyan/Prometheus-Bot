@@ -159,7 +159,10 @@ Lookup order for any string: **admin override** (per language, stored in
 (`en.yml` / `hy.yml`) → English override → English base → the key itself.
 Overrides load into memory at startup and refresh instantly on change, so
 `t()` stays synchronous. Even channel-post type headers (`type_internship` →
-"🧑‍💻 INTERNSHIP") are keys.
+"🧑‍💻 INTERNSHIP") and the ≡ command-menu descriptions (`cmd_*`) are keys;
+menus are registered per Telegram client language (`set_my_commands` with
+`language_code="hy"` plus an English default) and re-pushed with
+`/refreshcommands` after edits, since Telegram caches them.
 
 ## Reliability notes
 
@@ -167,7 +170,10 @@ Overrides load into memory at startup and refresh instantly on change, so
 - Scraping: rotating UAs, per-domain minimum spacing with jitter,
   exponential backoff, `Retry-After` honoring, optional global/LinkedIn
   proxies, one-shot unverified retry on broken cert chains (public read-only
-  content, human-reviewed downstream).
+  content, human-reviewed downstream). Webpage sources support an optional
+  per-source CSS selector (`meta.selector`, set via `/sourcemeta`) that
+  scopes candidate extraction to a listing container — precision mode for
+  pages where generic harvesting picks up navigation/sidebar noise.
 - Each source runs in its own DB transaction — one failure never poisons a
   cycle. Dedupe is a unique constraint on `content_hash(url, title)`.
 - asyncpg is configured with `statement_cache_size=0` for pgbouncer

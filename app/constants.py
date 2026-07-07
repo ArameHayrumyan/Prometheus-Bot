@@ -40,9 +40,21 @@ class SourceType(StrEnum):
     EMAIL = "email"
     COMMUNITY = "community"
     LINKEDIN = "linkedin"
+    TELEGRAM = "telegram"
 
 
 DEGREE_LEVELS = ("undergrad", "masters", "phd")
+AUDIENCES = ("student", "youth")
+
+
+def parse_channel_ref(ref: str | int) -> tuple[int, int | None]:
+    """Parse a channel reference: '-1001234' (plain channel) or
+    '-1001234:17' (forum supergroup topic — posts use message_thread_id=17)."""
+    s = str(ref).strip()
+    if ":" in s:
+        chat, thread = s.split(":", 1)
+        return int(chat), int(thread)
+    return int(s), None
 
 # IELTS -> approximate TOEFL iBT equivalence, used to compare mixed requirements
 IELTS_TO_TOEFL = {5.0: 35, 5.5: 46, 6.0: 60, 6.5: 79, 7.0: 94, 7.5: 102, 8.0: 110, 8.5: 115, 9.0: 118}

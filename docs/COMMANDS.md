@@ -83,7 +83,7 @@ Admin access = your Telegram ID is in `ADMIN_USER_IDS`. Admin UI is English.
 
 | Command | Purpose | Example |
 |---|---|---|
-| `/queue` | paginated **list view** of pending items (type + title + ⚠️ eligibility flags); numbered buttons open the classic card | `/queue` → tap `3` |
+| `/queue [youth]` | paginated **list view** with filter buttons: 👥 audience (student/🌱youth), 🏷 type, 🔬 field, ⚠️ eligibility — filters also scope card prev/next navigation | `/queue youth` → tap `3` |
 | `/archive` | same view over the «review later» shelf | `/archive` |
 | `/discards` | last 15 auto-discarded items **with reasons** — your window into the silent filter | `/discards` |
 | `/stats` | pipeline counts per status + users/saves/applied/outcomes | `/stats` |
@@ -107,7 +107,12 @@ shows the original text.
 | `/addsource <type> <url> [category[:js]] [name…]` | `/addsource rss https://example.org/feed/ aggregator Example feed`<br>`/addsource webpage https://lab.edu/jobs institute:js Lab careers` (`:js` = render with Playwright) |
 | `/listsources` | registry with per-source status and last-checked times |
 | `/togglesource <id>` | `/togglesource 42` — disable/enable without deleting |
-| `/sourcemeta <id> <key> <value>` | `/sourcemeta 12 selector div.jobs-list` — scope that source's scraping to a CSS container (precision mode); `-` as value removes the key |
+| `/sourcemeta <id> <key> <value>` | `/sourcemeta 12 selector div.jobs-list` (CSS precision mode) · `/sourcemeta 12 audience youth` (route to the 🌱 youth queue); `-` removes a key |
+| `/addsource telegram <t.me/s/name>` | scrape a public Telegram channel (the practical Armenian-companies "social media" route) |
+| `/ingest [youth] <text with link>` | manual ingestion — reply to a forwarded post or paste text; the human FB/IG scraper, runs the full pipeline |
+| `/setproxy <url\|->` | live egress-IP change for all bot-side scraping (bare shows current) |
+| `/addchannel <chat[:topic]> <name>` · `/listchannels` · `/delchannel <id>` | free posting targets — equal rights in the publish checklist, never pre-checked; 🏠 main comes from env |
+| `/navpost [channel_id]` | publish & pin the hashtag navigation index (auto-built from live taxonomy) |
 | `/addfield <Name> \| <kw1, kw2…>` | `/addfield Robotics \| robotics, ros, autonomous systems` |
 | `/listfields`, `/togglefield <id>` | inspect / toggle taxonomy entries |
 

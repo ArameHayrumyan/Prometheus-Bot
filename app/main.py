@@ -21,27 +21,42 @@ WEBHOOK_PATH = "/webhook"
 
 
 async def load_text_overrides() -> None:
-    """Load admin text customizations (/settext) into the i18n layer."""
+    """Load admin text customizations (/settext) and the runtime proxy."""
     from app.db.settings_service import get_setting
     from app.i18n import set_overrides
+    from app.scraping.http import set_runtime_proxy
 
     async with session_scope() as session:
         set_overrides(await get_setting(session, "i18n_overrides") or {})
+        set_runtime_proxy(await get_setting(session, "scraper_proxy") or None)
 
 
 async def sync_channels() -> None:
-    """Upsert the three degree-level channels from env config."""
+    """Upsert the single MAIN channel from env (unified-channel model) and
+    remove legacy per-degree / youth rows from older versions. Free channels
+    (/addchannel) are untouched. Refs accept '-100123' or '-100123:17'."""
+    from app.constants import parse_channel_ref
+
     settings = get_settings()
+    ref = settings.main_channel_ref
+    if not ref:
+        raise RuntimeError("CHANNEL_ID_MAIN is required (the unified channel)")
+    chat_id, thread_id = parse_channel_ref(ref)
     async with session_scope() as session:
-        for code, tg_id in settings.channel_map.items():
-            row = (await session.execute(
-                select(Channel).where(Channel.degree_level_code == code)
-            )).scalar_one_or_none()
-            if row is None:
-                session.add(Channel(degree_level_code=code, tg_channel_id=tg_id))
-            else:
-                row.tg_channel_id = tg_id
-    log.info("channels_synced", channels=settings.channel_map)
+        rows = (await session.execute(select(Channel))).scalars().all()
+        main = next((c for c in rows if c.audience == "main"), None)
+        for c in rows:
+            # legacy: degree-linked rows and the old youth row
+            if c.degree_level_code is not None or c.audience == "youth":
+                await session.delete(c)
+        if main is None:
+            session.add(Channel(tg_channel_id=chat_id, thread_id=thread_id,
+                                name="Main", audience="main",
+                                degree_level_code=None))
+        else:
+            main.tg_channel_id = chat_id
+            main.thread_id = thread_id
+    log.info("channels_synced", main=ref)
 
 
 async def health(_request: web.Request) -> web.Response:

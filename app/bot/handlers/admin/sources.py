@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.handlers.admin import IsAdmin
 from app.constants import SourceType
-from app.db.models import AdminAction, Source
+from app.db.models import AdminAction, Opportunity, Source
 from app.scheduler.jobs import run_source_types
 
 router = Router()
@@ -103,6 +103,86 @@ async def cmd_scrape(message: Message, command: CommandObject):
             await bot.send_message(chat_id, f"⚠️ Scrape cycle failed: {str(e)[:300]}")
 
     asyncio.create_task(run())
+
+
+@router.message(Command("ingest"))
+async def cmd_ingest(message: Message, command: CommandObject, session: AsyncSession):
+    """Manual ingestion — the human 'social media scraper'. Saw a vacancy on
+    FB/IG/anywhere: reply to a forwarded post with /ingest, or paste the text.
+    Add the word 'youth' as the first argument to tag it for the youth queue."""
+    from app.pipeline.ingest import process_raw
+    from app.pipeline.normalize import content_hash
+    from app.scraping.base import RawOpportunity
+
+    args = (command.args or "").strip()
+    audience = "student"
+    if args.lower().startswith("youth"):
+        audience = "youth"
+        args = args[5:].strip()
+    parts = [args] if args else []
+    if message.reply_to_message:
+        parts.append(message.reply_to_message.text
+                     or message.reply_to_message.caption or "")
+    blob = "\n".join(p for p in parts if p).strip()
+    url = next((w.rstrip(".,;:)]>\"'") for w in blob.split()
+                if w.startswith("http")), None)
+    if not blob or not url:
+        await message.answer(
+            "Usage: reply to a forwarded post with <code>/ingest</code>, or\n"
+            "<code>/ingest [youth] &lt;text incl. a link&gt;</code>\n"
+            "The text must contain the opportunity's URL.", parse_mode="HTML")
+        return
+    title = blob.splitlines()[0][:200]
+    raw = RawOpportunity(source_id=None, url=url, title=title,
+                         text=blob[:6000], audience=audience)
+    opp = await process_raw(session, raw)
+    if opp is not None:
+        await message.answer(f"✅ Queued as #opp{opp.id} "
+                             f"({'🌱 youth' if audience == 'youth' else '🎓 student'}) — /queue")
+        return
+    # discarded or duplicate — tell the admin which and why
+    existing = (await session.execute(
+        select(Opportunity).where(Opportunity.raw_hash == content_hash(url, title))
+    )).scalar_one_or_none()
+    if existing is None:
+        await message.answer("🤔 Could not ingest (unexpected).")
+    elif existing.status == "DISCARDED":
+        await message.answer(f"🗑 Filtered by the pipeline: {existing.discard_reason}\n"
+                             "(Hard gate applies to manual items too — funding "
+                             "and eligibility rules are absolute.)")
+    else:
+        await message.answer(f"♻️ Already known as #opp{existing.id} "
+                             f"(status: {existing.status}).")
+
+
+@router.message(Command("setproxy"))
+async def cmd_setproxy(message: Message, command: CommandObject, session: AsyncSession):
+    """Live egress-IP control for ALL bot-side scraping (webpages, RSS,
+    LinkedIn fallback, rss-bridge feeds). '-' clears back to env/direct."""
+    from app.db.settings_service import get_setting, set_setting
+    from app.scraping.http import get_runtime_proxy, set_runtime_proxy
+
+    arg = (command.args or "").strip()
+    if not arg:
+        current = get_runtime_proxy()
+        await message.answer(
+            f"Current runtime proxy: <code>{current or '(none — env/direct)'}</code>\n"
+            "Set: <code>/setproxy http://user:pass@host:port</code>\n"
+            "Clear: <code>/setproxy -</code>\n\n"
+            "Note: this changes the BOT's egress IP. A self-hosted rss-bridge "
+            "scrapes FB/IG from its own server — rotate ITS IP in the bridge's "
+            "deployment, not here.", parse_mode="HTML")
+        return
+    value = None if arg == "-" else arg
+    if value is not None and not value.startswith(("http://", "https://", "socks5://")):
+        await message.answer("Proxy must start with http://, https:// or socks5://")
+        return
+    await set_setting(session, "scraper_proxy", value)
+    set_runtime_proxy(value)
+    session.add(AdminAction(admin_tg_id=message.from_user.id, action="setproxy",
+                            payload={"set": bool(value)}))
+    await message.answer(f"✅ Runtime proxy {'set' if value else 'cleared'} — applies "
+                         "to the next request, no restart.")
 
 
 @router.message(Command("sourcemeta"))

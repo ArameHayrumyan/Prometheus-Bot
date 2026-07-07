@@ -8,12 +8,13 @@ from app.db.models import Source
 
 @dataclass
 class RawOpportunity:
-    source_id: int
+    source_id: int | None
     url: str
     title: str
     text: str
     org: str | None = None
     posted_at: datetime | None = None
+    audience: str = "student"  # set from the source's meta by the scheduler
     extra: dict = field(default_factory=dict)
 
 

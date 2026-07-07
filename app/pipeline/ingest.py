@@ -54,7 +54,7 @@ async def process_raw(session: AsyncSession, raw: RawOpportunity) -> Opportunity
     extracted = normalize.extract_all(
         raw.title, raw.text, taxonomy, noise_keywords, deliverable_keywords
     )
-    gate = hard_gate.evaluate(extracted, min_duration)
+    gate = hard_gate.evaluate(extracted, min_duration, youth=(raw.audience == "youth"))
 
     # org: handler-provided, else extracted from title/first lines, else the
     # source domain as a readable last resort (never "unknown")
@@ -70,6 +70,7 @@ async def process_raw(session: AsyncSession, raw: RawOpportunity) -> Opportunity
         org=org,
         description=raw.text[:8000],
         opportunity_type=extracted.opportunity_type,
+        audience=raw.audience,
         degree_levels=extracted.degree_levels,
         fields=extracted.fields_matched,
         deadline=extracted.deadline,

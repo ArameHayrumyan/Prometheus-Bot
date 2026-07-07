@@ -43,16 +43,20 @@ Now fill it in, variable by variable.
    (e.g. `moonin_opps_bot`).
 3. Copy the token that looks like `7123456789:AAE...` into `BOT_TOKEN`.
 
-### 2.2 `CHANNEL_ID_UNDERGRAD` / `CHANNEL_ID_MASTERS` / `CHANNEL_ID_PHD`
+### 2.2 `CHANNEL_ID_MAIN` (the unified channel)
 
-1. Create three Telegram channels (public or private, both work).
-2. In **each** channel: *Manage channel → Administrators → Add administrator*
-   → search your bot's username → grant at least **Post messages**.
-   ⚠️ If you skip this, publishing fails with `chat not found` / `not enough rights`.
-3. Get each channel's numeric ID: forward any message *from the channel* to
-   [@userinfobot](https://t.me/userinfobot). It replies with a
-   `forwarded from chat #-100XXXXXXXXXX` line. IDs always start with `-100`.
-4. Put the three IDs in `.env`. Do not quote them.
+1. Create ONE Telegram channel (public or private, both work). Navigation
+   inside it is by hashtags (`#internship #undergrad #youth #datascience
+   #germany #mar2027…`) — publish the pinned index later with `/navpost`.
+2. *Manage channel → Administrators → Add administrator* → your bot →
+   grant **Post messages** (+ **Pin messages** if you want `/navpost` to
+   pin itself). ⚠️ Skipping this makes publishing fail with
+   `chat not found` / `not enough rights`.
+3. Get the numeric ID: forward any message *from the channel* to
+   [@userinfobot](https://t.me/userinfobot) — IDs start with `-100`.
+4. Set `CHANNEL_ID_MAIN` in `.env` (unquoted). A forum-supergroup topic also
+   works: `-1001234567890:17`. Extra hand-post targets are added at runtime
+   with `/addchannel` — no env change.
 
 ### 2.3 `ADMIN_USER_IDS`
 

@@ -13,14 +13,19 @@ PART_1 = """🛠 <b>Admin reference (1/2) — review &amp; sources</b>
 
 📥 <b>Review workflow</b>
 
-/queue — pending items as a numbered list (type · title · ⚠️ flags).
+/queue — pending items as a numbered list with <b>filter buttons</b>:
+👥 audience (student/🌱youth) · 🏷 type · 🔬 field · ⚠️ eligibility.
+Filters apply to the list AND to card prev/next navigation.
+<code>/queue youth</code> jumps straight to the youth tab.
 Tap a number → the classic card: ✅ Approve · ❌ Reject · ✏️ Edit text ·
 🖼 Photo · ◀️ 🗂 Later ▶️ · 📋 List view.
 
 <b>Approve flow:</b> Approve → one AI call (TL;DR + competitiveness +
-requirement bullets, daily-capped) → preview with channel toggles
-(✅ Undergrad ⬜ Masters ⬜ Phd) → 🚀 Publish to selected / ✏️ Edit first /
-↩️ Use original. <i>Nothing posts without the 🚀 tap.</i>
+requirement bullets, daily-capped) → preview with the channel checklist
+(🏠 main pre-checked, 📌 free channels optional), a 🌐 EN/HY post-language
+toggle → 🚀 Publish to selected / ✏️ Edit first / ↩️ Use original.
+<i>Nothing posts without the 🚀 tap.</i> Posts carry navigation hashtags
+(#type #degree #youth #field #country #mar2027-style deadline).
 
 /archive — the «🗂 Later» shelf; same card actions + move back to queue.
 /discards — last 15 auto-filtered items with reasons.
@@ -40,9 +45,21 @@ requirement bullets, daily-capped) → preview with channel toggles
    (types: webpage, rss, email, community, linkedin; «:js» = Playwright)
 /listsources — full registry with last-checked times.
 /togglesource &lt;id&gt; — <code>/togglesource 42</code> — pause/resume a source.
-/sourcemeta &lt;id&gt; &lt;key&gt; &lt;value&gt; — per-source tuning, e.g.
-   <code>/sourcemeta 12 selector div.jobs-list</code> — scope scraping to a
-   CSS container when the generic harvester picks up page noise.
+/sourcemeta &lt;id&gt; &lt;key&gt; &lt;value&gt; — per-source tuning:
+   <code>/sourcemeta 12 selector div.jobs-list</code> (CSS precision mode),
+   <code>/sourcemeta 12 audience youth</code> (route to the 🌱 youth queue).
+/ingest [youth] — manual ingestion: reply to a forwarded post or paste
+   text containing a link; runs the normal pipeline. The human FB/IG scraper.
+/setproxy &lt;url|-&gt; — live egress-IP change for all bot-side scraping.
+Telegram company channels: <code>/addsource telegram https://t.me/s/name</code>
+
+📡 <b>Channels</b> (unified model: 🏠 main + 📌 free extras)
+
+/listchannels — all posting targets.
+/addchannel &lt;chat[:topic]&gt; &lt;name&gt; — add a free target (equal rights,
+   never pre-checked). /delchannel &lt;id&gt; removes free ones.
+/navpost [id] — publish &amp; pin the hashtag navigation index (auto-built
+   from live taxonomy; intro text customizable via navpost_intro key).
 /addfield Name | kw1, kw2 —
    <code>/addfield Robotics | robotics, ros, autonomous systems</code>
 /listfields · /togglefield &lt;id&gt; — inspect / toggle taxonomy."""

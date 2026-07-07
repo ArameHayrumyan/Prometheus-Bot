@@ -11,6 +11,7 @@ from app.scraping.community import CommunityBoardScraper
 from app.scraping.email_newsletter import EmailNewsletterScraper
 from app.scraping.linkedin import LinkedInGuestScraper
 from app.scraping.rss import RSSFeedScraper
+from app.scraping.telegram_channel import TelegramChannelScraper
 from app.scraping.webpage import WebPageScraper
 
 log = get_logger("scraping.registry")
@@ -23,6 +24,7 @@ HANDLERS: dict[str, SourceHandler] = {
         EmailNewsletterScraper(),
         CommunityBoardScraper(),
         LinkedInGuestScraper(),
+        TelegramChannelScraper(),
     )
 }
 

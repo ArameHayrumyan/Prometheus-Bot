@@ -31,10 +31,18 @@ class DegreeLevel(Base):
 
 
 class Channel(Base):
+    """A posting target: a channel, or a forum-supergroup topic (thread_id).
+
+    audience: 'student' (the three degree channels), 'youth' (the youth
+    channel), or 'free' (admin-added, never auto-selected)."""
     __tablename__ = "channels"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    degree_level_code: Mapped[str] = mapped_column(ForeignKey("degree_levels.code"), unique=True)
+    degree_level_code: Mapped[str | None] = mapped_column(
+        ForeignKey("degree_levels.code"), unique=True, nullable=True)
     tg_channel_id: Mapped[int] = mapped_column(BigInteger)
+    thread_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    name: Mapped[str] = mapped_column(String(100), default="")
+    audience: Mapped[str] = mapped_column(String(10), default="student")
 
 
 class FieldTaxonomy(Base):
@@ -95,6 +103,7 @@ class Opportunity(Base):
     org: Mapped[str | None] = mapped_column(Text, nullable=True)
     description: Mapped[str] = mapped_column(Text, default="")
     opportunity_type: Mapped[str] = mapped_column(String(20))  # OpportunityType
+    audience: Mapped[str] = mapped_column(String(10), default="student")  # student/youth
     degree_levels: Mapped[list] = mapped_column(JSON, default=list)  # ["masters", "phd"]
     fields: Mapped[list] = mapped_column(JSON, default=list)  # taxonomy names matched
     country: Mapped[str | None] = mapped_column(String(120), nullable=True)

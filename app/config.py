@@ -8,11 +8,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # Telegram
+    # Telegram — ONE hardcoded main channel; extra targets via /addchannel.
+    # Refs accept "-100123" or "-100123:17" (forum-supergroup topic).
     bot_token: str
-    channel_id_undergrad: int
-    channel_id_masters: int
-    channel_id_phd: int
+    channel_id_main: str = ""
+    # legacy vars (pre-unified-channel) — used as fallback for CHANNEL_ID_MAIN
+    channel_id_undergrad: str = ""
+    channel_id_masters: str = ""
+    channel_id_phd: str = ""
+    channel_id_youth: str = ""
     admin_user_ids: str = ""
 
     # Database
@@ -69,12 +73,10 @@ class Settings(BaseSettings):
         return [int(x) for x in self.admin_user_ids.replace(";", ",").split(",") if x.strip()]
 
     @property
-    def channel_map(self) -> dict[str, int]:
-        return {
-            "undergrad": self.channel_id_undergrad,
-            "masters": self.channel_id_masters,
-            "phd": self.channel_id_phd,
-        }
+    def main_channel_ref(self) -> str:
+        """CHANNEL_ID_MAIN, falling back to the legacy undergrad var so old
+        .env files keep working after the unified-channel migration."""
+        return (self.channel_id_main or self.channel_id_undergrad).strip()
 
 
 @lru_cache

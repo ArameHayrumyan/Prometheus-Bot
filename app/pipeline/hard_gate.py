@@ -21,25 +21,31 @@ class GateResult:
     uncertain_eligibility: bool = False
 
 
-def evaluate(extracted: Extracted, min_duration_days: int) -> GateResult:
-    # Rule 1 — funding coverage
+def evaluate(extracted: Extracted, min_duration_days: int,
+             youth: bool = False) -> GateResult:
+    """youth=True relaxes rules 3-4 for youth-audience sources: camps,
+    olympiads and school programs are short, summit-flavored and rarely
+    match adult STEM keywords — the funding and eligibility rules stay
+    absolute."""
+    # Rule 1 — funding coverage (never relaxed)
     if extracted.funding_tier == FundingTier.STUDENT_PAYS:
         return GateResult(False, "funding: student pays tuition/program fees")
 
-    # Rule 2 — Armenian eligibility
+    # Rule 2 — Armenian eligibility (never relaxed)
     if extracted.armenian_eligibility == Eligibility.INELIGIBLE:
         return GateResult(False, "eligibility: restricted country list excludes Armenia")
     uncertain = extracted.armenian_eligibility == Eligibility.UNCERTAIN
 
-    # Rule 3 — field relevance
-    if not extracted.fields_matched:
+    # Rule 3 — field relevance (skipped for youth sources)
+    if not youth and not extracted.fields_matched:
         return GateResult(False, "field: no match against taxonomy")
 
-    # Rule 4 — noise filter
-    if extracted.duration_days is not None and extracted.duration_days < min_duration_days:
+    # Rule 4 — noise filter (youth: 2-day floor instead of the configured one)
+    effective_min = 2 if youth else min_duration_days
+    if extracted.duration_days is not None and extracted.duration_days < effective_min:
         return GateResult(
             False,
-            f"noise: duration {extracted.duration_days}d < minimum {min_duration_days}d",
+            f"noise: duration {extracted.duration_days}d < minimum {effective_min}d",
         )
     if extracted.noise_hits and not extracted.has_deliverable:
         return GateResult(

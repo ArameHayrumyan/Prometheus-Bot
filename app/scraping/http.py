@@ -25,6 +25,19 @@ _MIN_DOMAIN_INTERVAL = 5.0  # seconds between requests to the same domain
 _last_hit: dict[str, float] = {}
 _domain_locks: dict[str, asyncio.Lock] = {}
 
+# Runtime proxy override (/setproxy) — takes precedence over SCRAPER_PROXY_URL,
+# so the egress IP can be rotated live from the admin chat, no restart.
+_runtime_proxy: str | None = None
+
+
+def set_runtime_proxy(url: str | None) -> None:
+    global _runtime_proxy
+    _runtime_proxy = url or None
+
+
+def get_runtime_proxy() -> str | None:
+    return _runtime_proxy
+
 
 def _domain(url: str) -> str:
     return urlparse(url).netloc.lower()
@@ -44,7 +57,7 @@ async def _respect_domain_spacing(url: str) -> None:
 async def polite_get(url: str, retries: int = 3, timeout: float = 30.0,
                      proxy: str | None = None, headers: dict | None = None) -> httpx.Response:
     settings = get_settings()
-    proxy = proxy or (settings.scraper_proxy_url or None)
+    proxy = proxy or _runtime_proxy or (settings.scraper_proxy_url or None)
     merged_headers = {
         "User-Agent": random.choice(USER_AGENTS),
         "Accept-Language": "en-US,en;q=0.9",

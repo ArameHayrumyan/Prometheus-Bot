@@ -49,7 +49,9 @@ async def run_source_types(bot: Bot, source_types: list[str],
                 if source is None or not source.active:
                     continue
                 raws = await fetch_source(session, source)
+                audience = (source.meta or {}).get("audience", "student")
                 for raw in raws:
+                    raw.audience = audience
                     opp = await process_raw(session, raw)
                     if opp is not None:
                         new_pending += 1
@@ -226,13 +228,12 @@ def pick_digest_items(opps: list, limit: int = 5, minimum: int = 3) -> list:
     return ranked[:limit]
 
 
-async def build_digest_text(session, channel: Channel, bot_username: str,
-                            today: date) -> str | None:
-    """Compile a channel's closing-soon digest, or None when under the minimum."""
+async def build_digest_text(session, bot_username: str, today: date) -> str | None:
+    """Compile the unified channel's closing-soon digest (all audiences,
+    youth items marked 🌱), or None when under the minimum."""
     opps = (await session.execute(
         select(Opportunity)
         .where(Opportunity.status == OppStatus.PUBLISHED,
-               Opportunity.degree_levels.contains([channel.degree_level_code]),
                Opportunity.deadline.is_not(None),
                Opportunity.deadline >= today,
                Opportunity.deadline <= today + timedelta(days=60))
@@ -244,8 +245,9 @@ async def build_digest_text(session, channel: Channel, bot_username: str,
     for i, opp in enumerate(picked, 1):
         days_left = (opp.deadline - today).days
         link = f"https://t.me/{bot_username}?start=opp_{opp.id}"
+        mark = "🌱 " if opp.audience == "youth" else ""
         lines.append(
-            f"{i}. <a href=\"{link}\">{html.escape(opp.title[:80], quote=False)}</a>\n"
+            f"{i}. {mark}<a href=\"{link}\">{html.escape(opp.title[:80], quote=False)}</a>\n"
             f"   📅 {opp.deadline} ({days_left}d left) · 🎯 ~{opp.chance_percent}%"
         )
     lines.append("")
@@ -254,33 +256,35 @@ async def build_digest_text(session, channel: Channel, bot_username: str,
 
 
 async def weekly_digest(bot: Bot) -> None:
-    """Sunday 19:00 Yerevan: compile per-channel digests and send them to the
-    ADMINS for approval — nothing is ever posted to a channel automatically."""
+    """Sunday 19:00 Yerevan: compile the main-channel digest and send it to
+    the ADMINS for approval — nothing is ever posted automatically."""
     from app.bot.keyboards import kb
 
     me = await bot.get_me()
     today = date.today()
     settings = get_settings()
     async with session_scope() as session:
-        channels = (await session.execute(select(Channel))).scalars().all()
-        for channel in channels:
-            text = await build_digest_text(session, channel, me.username or "", today)
-            if text is None:
-                log.info("digest_skipped", channel=channel.degree_level_code)
-                continue
-            code = channel.degree_level_code
-            preview = (f"🗓 Digest preview for <b>{code}</b> — post it?\n"
-                       f"{'─' * 20}\n\n{text}")
-            for admin_id in settings.admin_ids:
-                try:
-                    await bot.send_message(
-                        admin_id, preview[:4096], parse_mode="HTML",
-                        disable_web_page_preview=True,
-                        reply_markup=kb([[("📣 Post to channel", f"dg:post:{code}"),
-                                          ("✖️ Skip this week", f"dg:skip:{code}")]]),
-                    )
-                except Exception as e:
-                    log.info("digest_preview_failed", admin=admin_id, error=str(e)[:150])
+        main = (await session.execute(
+            select(Channel).where(Channel.audience == "main")
+        )).scalars().first()
+        if main is None:
+            log.warning("digest_no_main_channel")
+            return
+        text = await build_digest_text(session, me.username or "", today)
+        if text is None:
+            log.info("digest_skipped_below_minimum")
+            return
+        preview = f"🗓 Weekly digest preview — post it?\n{'─' * 20}\n\n{text}"
+        for admin_id in settings.admin_ids:
+            try:
+                await bot.send_message(
+                    admin_id, preview[:4096], parse_mode="HTML",
+                    disable_web_page_preview=True,
+                    reply_markup=kb([[("📣 Post to channel", f"dg:post:{main.id}"),
+                                      ("✖️ Skip this week", f"dg:skip:{main.id}")]]),
+                )
+            except Exception as e:
+                log.info("digest_preview_failed", admin=admin_id, error=str(e)[:150])
 
 
 def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
@@ -296,8 +300,8 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
                       args=[bot, ["webpage"]], id="webpage", max_instances=1, coalesce=True,
                       misfire_grace_time=3600)
     scheduler.add_job(run_source_types, "interval", hours=s.community_scrape_hours,
-                      args=[bot, ["community"]], id="community", max_instances=1,
-                      coalesce=True, misfire_grace_time=3600)
+                      args=[bot, ["community", "telegram"]], id="community",
+                      max_instances=1, coalesce=True, misfire_grace_time=3600)
     scheduler.add_job(run_source_types, "interval", hours=s.linkedin_scrape_hours,
                       args=[bot, ["linkedin"]], id="linkedin", max_instances=1,
                       coalesce=True, misfire_grace_time=3600)

@@ -1,10 +1,12 @@
-"""Channel post rendering + publishing.
+"""Channel post rendering + publishing (unified-channel model: one main
+channel, hashtag navigation, optional free channels as equal targets).
 
 The free-editable body (edited_text) and the auto-generated template parts
 (header/footer/#opp tag/buttons) are strictly separated: admins can only
 replace the body; buttons and the #opp reference are always regenerated.
 """
 import html
+import re
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -34,16 +36,49 @@ FUNDING_LABEL = {
 
 DEGREE_TAG = {"undergrad": "#undergrad", "masters": "#masters", "phd": "#phd"}
 
-# Bitmask for the admin channel-picker (encoded in callback data)
-DEGREE_BITS = {"undergrad": 1, "masters": 2, "phd": 4}
+
+def _tag_slug(s: str) -> str:
+    """'Data Science' -> 'datascience'; safe for Telegram hashtags."""
+    return re.sub(r"[^a-z0-9]", "", s.lower())
 
 
-def mask_from_levels(levels: list[str]) -> int:
-    return sum(DEGREE_BITS.get(code, 0) for code in (levels or []))
+def post_tags(opp: Opportunity) -> list[str]:
+    """The unified channel's navigation system: tappable hashtags per axis —
+    reference (#opp), type, audience/degree, field, location, deadline month."""
+    tags = [f"#opp{opp.id}", f"#{opp.opportunity_type}"]
+    if opp.audience == "youth":
+        tags.append("#youth")
+    tags += [DEGREE_TAG[d] for d in (opp.degree_levels or []) if d in DEGREE_TAG]
+    tags += ["#" + _tag_slug(f) for f in (opp.fields or [])[:3]]
+    if opp.country:
+        if "remote" in opp.country.lower():
+            tags.append("#remote")
+        else:
+            slug = _tag_slug(opp.country)
+            if slug:
+                tags.append("#" + slug)
+    if opp.deadline:
+        tags.append(opp.deadline.strftime("#%b%Y").lower())
+    seen: set[str] = set()
+    return [t_ for t_ in tags if not (t_ in seen or seen.add(t_))]
+
+async def all_channels(session: AsyncSession) -> list[Channel]:
+    return list((await session.execute(
+        select(Channel).order_by(Channel.audience, Channel.id)
+    )).scalars().all())
 
 
-def levels_from_mask(mask: int) -> list[str]:
-    return [code for code, bit in DEGREE_BITS.items() if mask & bit]
+def default_channel_ids(opp: Opportunity, channels: list[Channel]) -> set[int]:
+    """Pre-selection for the publish picker: the MAIN channel, always.
+    Free channels are functional equals but never auto-selected —
+    audience routing inside the one channel is done with hashtags."""
+    return {c.id for c in channels if c.audience == "main"}
+
+
+def channel_label(channel: Channel) -> str:
+    if channel.audience == "main":
+        return f"🏠 {channel.name or 'Main'}"
+    return channel.name or f"#{channel.id}"
 
 
 def _esc(s: str) -> str:
@@ -106,9 +141,7 @@ def build_post_text(opp: Opportunity, lang: str = "en") -> str:
     if opp.armenian_eligibility in ("ELIGIBLE", "UNCERTAIN"):
         facts.append(t("eligibility_" + opp.armenian_eligibility, lang))
 
-    tags = [f"#opp{opp.id}", f"#{opp.opportunity_type}"]
-    tags += [DEGREE_TAG[d] for d in (opp.degree_levels or []) if d in DEGREE_TAG]
-    footer = f"<i>{' '.join(tags)}</i>"
+    footer = f"<i>{' '.join(post_tags(opp))}</i>"
     return "\n\n".join([header, body, "\n".join(facts), footer])
 
 
@@ -134,16 +167,21 @@ def build_post_keyboard(opp: Opportunity, bot_username: str, lang: str = "en",
 
 
 async def publish_opportunity(bot: Bot, session: AsyncSession, opp: Opportunity,
-                              degree_codes: list[str] | None = None) -> int:
-    """Post to the selected channels (admin's channel picker), defaulting to
-    the opportunity's detected degree levels. Returns channels posted to."""
-    target = degree_codes if degree_codes is not None else (opp.degree_levels or [])
+                              channel_ids: list[int] | None = None,
+                              lang: str = "en") -> int:
+    """Post to the explicitly selected channel rows (admin's channel picker),
+    rendered in the chosen post language; supports forum-topic targets via
+    thread_id. Returns the number of channels posted to."""
     me = await bot.get_me()
-    text = build_post_text(opp)
-    keyboard = build_post_keyboard(opp, me.username or "")
-    channels = (await session.execute(
-        select(Channel).where(Channel.degree_level_code.in_(target))
-    )).scalars().all()
+    text = build_post_text(opp, lang)
+    keyboard = build_post_keyboard(opp, me.username or "", lang)
+    if channel_ids is None:
+        channels = await all_channels(session)
+        channels = [c for c in channels if c.id in default_channel_ids(opp, channels)]
+    else:
+        channels = (await session.execute(
+            select(Channel).where(Channel.id.in_(channel_ids))
+        )).scalars().all()
 
     posted = 0
     for channel in channels:
@@ -152,12 +190,14 @@ async def publish_opportunity(bot: Bot, session: AsyncSession, opp: Opportunity,
                 msg = await bot.send_photo(
                     channel.tg_channel_id, opp.image_file_id,
                     caption=text[:1024], reply_markup=keyboard, parse_mode="HTML",
+                    message_thread_id=channel.thread_id,
                 )
             else:
                 msg = await bot.send_message(
                     channel.tg_channel_id, text[:4096],
                     reply_markup=keyboard, parse_mode="HTML",
                     disable_web_page_preview=True,
+                    message_thread_id=channel.thread_id,
                 )
             session.add(ChannelPost(
                 opportunity_id=opp.id,

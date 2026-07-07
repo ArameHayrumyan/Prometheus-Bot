@@ -101,7 +101,7 @@ All configuration is via `.env` (template: [.env.example](.env.example)).
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
 | `BOT_TOKEN` | ✅ | — | BotFather token |
-| `CHANNEL_ID_UNDERGRAD` / `_MASTERS` / `_PHD` | ✅ | — | numeric channel IDs (`-100…`); bot must be channel admin |
+| `CHANNEL_ID_MAIN` | ✅ | — | the unified channel: `-100…` or `-100…:topic_id` (forum topic); bot must be admin. Extra targets via `/addchannel`. Legacy `CHANNEL_ID_UNDERGRAD` still works as fallback |
 | `ADMIN_USER_IDS` | ✅ | — | comma-separated Telegram user IDs with admin powers |
 | `DATABASE_URL` | ✅ | — | Postgres URL (Supabase session pooler recommended); `postgres://` auto-converted to asyncpg |
 | `GROQ_API_KEY` / `DEEPSEEK_API_KEY` / `GEMINI_API_KEY` | ≥1 | — | AI providers; router fails over between all configured ones |

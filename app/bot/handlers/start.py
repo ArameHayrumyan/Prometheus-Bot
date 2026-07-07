@@ -67,7 +67,7 @@ async def start_deeplink(message: Message, command: CommandObject,
 @router.message(CommandStart())
 async def start_plain(message: Message, session: AsyncSession, user: User, state: FSMContext):
     if user.onboarded:
-        await message.answer(t("help", user.language))
+        await message.answer(t("help", user.language), parse_mode="HTML")
         return
     await message.answer(t("start_welcome", user.language))
     await message.answer(t("choose_language", user.language), reply_markup=language_kb())
@@ -196,12 +196,14 @@ async def _finish(message: Message, user: User, state: FSMContext):
     user.onboarded = True
     await state.clear()
     await message.answer(t("onboarding_done", user.language))
-    await message.answer(t("help", user.language) + "\n\n" + t("channels_promo", user.language))
+    await message.answer(t("help", user.language) + "\n\n" + t("channels_promo", user.language),
+                         parse_mode="HTML")
 
 
 @router.message(Command("help"))
 async def cmd_help(message: Message, user: User):
-    await message.answer(t("help", user.language) + "\n\n" + t("channels_promo", user.language))
+    await message.answer(t("help", user.language) + "\n\n" + t("channels_promo", user.language),
+                         parse_mode="HTML")
 
 
 @router.message(Command("profile"))

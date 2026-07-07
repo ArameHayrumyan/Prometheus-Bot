@@ -1,231 +1,177 @@
-# Moonin — Armenian IT/DS Opportunities Bot & Channels
+# 🌙 Moonin — Funded Opportunities Bot for Armenian STEM Students
 
-A Telegram bot + three channels (Undergrad / Masters / PhD) that aggregates
-**fully- or mostly-funded** IT, Data Science, Bioinformatics and Engineering
-opportunities (internships, scholarships, fellowships, trainings, entry-level
-jobs, hackathons), rigorously filters out noise and pay-to-participate
-programs, and gives each student a resume-based success-probability analysis.
+> A Telegram bot + three curated channels (Undergrad · Masters · PhD) that
+> hunt down **fully- and mostly-funded** IT, Data Science, Bioinformatics and
+> Engineering opportunities across ~140 sources, filter out everything not
+> realistically attainable or genuinely valuable, and tell each student —
+> based on their actual resume — what their real chances are.
 
-**Pipeline:** 50+ seeded sources (web pages, RSS, IMAP newsletters, community
-boards, LinkedIn guest search) → normalization → **hard gate** (funding /
-Armenian eligibility / field / noise) → legitimacy + chance scoring →
-AI tiebreak only for borderline items (RAG-grounded with pgvector) →
-**admin review queue** (nothing publishes automatically) → channel posts with
-Apply / Details / Analyze-my-fit buttons.
-
-Stack: Python 3.11, aiogram 3, httpx + BeautifulSoup + Playwright + feedparser,
-APScheduler, PostgreSQL (Supabase/Neon) + SQLAlchemy 2 async + Alembic +
-pgvector, sentence-transformers (local CPU embeddings), DeepSeek + Groq +
-Gemini behind one failover router.
+`Python 3.11` · `aiogram 3` · `PostgreSQL + pgvector` · `SQLAlchemy 2 async` ·
+`APScheduler` · `sentence-transformers` · `DeepSeek / Groq / Gemini` ·
+`65 tests` · `MIT`
 
 ---
 
-## 1. Create the Telegram bot & channels
+## Why this exists
 
-1. Open [@BotFather](https://t.me/BotFather) → `/newbot` → pick a name and a
-   username ending in `bot`. Copy the token → `BOT_TOKEN`.
-2. In BotFather: `/setprivacy` → your bot → **Disable** is *not* needed
-   (the bot only works in DMs and channels).
-3. Create three Telegram channels (Undergrad, Masters, PhD). In each channel:
-   *Manage channel → Administrators → Add admin* → add your bot with
-   **Post messages** permission.
-4. Get each channel's numeric ID: forward any post from the channel to
-   [@userinfobot](https://t.me/userinfobot) (or add [@getidsbot](https://t.me/getidsbot)),
-   the ID looks like `-1001234567890`. Fill `CHANNEL_ID_UNDERGRAD`,
-   `CHANNEL_ID_MASTERS`, `CHANNEL_ID_PHD`.
-5. Get your own Telegram user ID from [@userinfobot](https://t.me/userinfobot)
-   → `ADMIN_USER_IDS` (comma-separated for multiple admins).
+Opportunity aggregators are noisy: pay-to-participate "youth summits",
+programs closed to Armenian citizens, prestige listings with 0.5% acceptance
+rates presented next to genuinely reachable niche programs. Moonin inverts
+the priorities:
 
-## 2. Get free AI keys (all three)
+- **Funding is a hard gate, not a filter option.** If the student pays
+  tuition or program fees, it never reaches a channel. Ever.
+- **Armenian eligibility is resolved explicitly.** Restricted country lists
+  that exclude Armenia are rejected; ambiguous cases are flagged for human
+  review — never silently published, never silently dropped.
+- **Low-visibility beats prestige.** The scoring model deliberately ranks a
+  legitimate-but-obscure lab internship *above* a FAANG listing, because
+  fewer applicants means a higher real chance.
+- **Humans stay in the loop.** Nothing is ever posted to a channel without
+  an explicit admin tap — including AI-generated content and weekly digests.
 
-| Provider | Where | Notes |
-|---|---|---|
-| Groq | https://console.groq.com/keys | free tier, very fast — default first priority |
-| DeepSeek | https://platform.deepseek.com/api_keys | cheap/free trial credit |
-| Gemini | https://aistudio.google.com/apikey | free tier |
+## Feature map
 
-Paste them into `.env`. The router fails over automatically and throttles each
-provider below its free-tier rate limit (`GROQ_RPM`, `DEEPSEEK_RPM`,
-`GEMINI_RPM`).
+| Area | What you get |
+|---|---|
+| **Acquisition** | ~140 seeded sources across 5 typed handlers: web pages (httpx/BS4 + optional Playwright), RSS feeds, an IMAP newsletter mailbox, community boards (reddit/HN), LinkedIn guest search. New source = one `/addsource` command, zero code. |
+| **Filtering** | 4-rule hard gate (funding / Armenian eligibility / field taxonomy / noise), then a rule-based legitimacy score. AI is called **only** for borderline scores, grounded via pgvector retrieval of past admin verdicts (RAG few-shot). |
+| **Scoring** | Weighted success-chance estimate from stated acceptance rates, spots, prestige/selectivity signals, and per-student requirement matching (degree, field, GPA, English score + expiry). All weights live-tunable. |
+| **Review** | Admin queue with list + card views, prev/next navigation, archive shelf, free-text/photo editing, AI post enrichment with preview, per-post channel picker. Full audit log. |
+| **AI (frugal)** | Three providers behind one failover router with per-provider throttling. Used in exactly 3 places: borderline tiebreak, approve-time post enrichment (daily-capped), resume fit analysis. Everything else is heuristics — free-tier quotas survive. |
+| **Students** | Bilingual (EN/HY) onboarding, filterable search, saved filters with push notifications, resume upload → fit analysis (score, gaps, suggested bullets), ⭐ saved items, deadline reminders (7/3/1 days), application tracker with outcome collection, forward-a-post-get-full-details. |
+| **Operations** | Every user-facing string customizable live (`/settext`), broadcast messaging, on-demand scraping, weekly digest previews, self-tuning source reputation, structured JSON logging. |
 
-## 3. Create a free Supabase Postgres and enable pgvector
+## Architecture at a glance
 
-1. https://supabase.com → New project (free tier). Choose a strong DB password.
-2. In the dashboard: **Database → Extensions →** search `vector` → enable it.
-   (The first migration also runs `CREATE EXTENSION IF NOT EXISTS vector`, so
-   enabling it in the UI is belt-and-suspenders.)
-3. **Connect** (top bar) → *Connection string* → use the **Session pooler**
-   URI (port 5432). Replace the password placeholder, then set it as
-   `DATABASE_URL`. `postgresql://` is converted to `postgresql+asyncpg://`
-   automatically.
-
-(Neon works identically: create a project at https://neon.tech, run
-`CREATE EXTENSION vector;` in the SQL editor, copy the connection string.)
-
-## 4. Newsletter mailbox (IMAP acquisition channel)
-
-1. Create a dedicated free Gmail account (don't reuse a personal one).
-2. Enable 2-Step Verification, then create an **App password**
-   (Google Account → Security → App passwords) → `NEWSLETTER_IMAP_PASSWORD`.
-3. Set `NEWSLETTER_IMAP_HOST=imap.gmail.com`, `NEWSLETTER_IMAP_USER=<address>`.
-4. Subscribe that mailbox to opportunity digests — recommended starters:
-   - ProFellow (https://www.profellow.com — weekly fellowship digest)
-   - Opportunity Desk (https://opportunitydesk.org — daily digest)
-   - Scholarship Positions newsletter
-   - University career-center digests, IEEE/ACM student chapter mailing lists
-   - **LinkedIn job alerts** — log the mailbox's LinkedIn account in, create
-     saved job searches (e.g. "data science intern", location: Worldwide,
-     remote) and set email alert frequency to daily. This is the recommended,
-     ToS-clean LinkedIn channel; alert emails are parsed like any newsletter.
-
-The bot polls `INBOX` for unseen messages every `NEWSLETTER_POLL_MINUTES`.
-
-### LinkedIn guest scraping (optional, on by default)
-
-`LinkedInGuestScraper` additionally polls the public no-login guest search
-endpoint every `LINKEDIN_SCRAPE_HOURS` (default 6h), deliberately gently
-(1 request per registered search, jitter, shared domain throttle). Note that
-even guest-page scraping may violate LinkedIn's ToS — you can:
-- turn it off entirely: `LINKEDIN_ENABLED=false`,
-- change its egress IP with **zero code edits**: set `LINKEDIN_PROXY_URL`
-  (or `SCRAPER_PROXY_URL` for all scrapers) to any `http://user:pass@host:port`
-  proxy.
-
-## 5. Run locally (Docker Compose)
-
-```bash
-cp .env.example .env      # then fill in everything from steps 1-4
+```
+                 ┌─────────────────────────────────────────────┐
+   ~140 sources  │              SOURCE REGISTRY (DB)           │
+ ┌──────────┐    │  webpage │ rss │ email │ community │ linkedin│
+ │ web pages│──▶ └────────────────────┬────────────────────────┘
+ │ RSS feeds│──▶      APScheduler     │ RawOpportunity
+ │ IMAP inbox──▶  (15min…6h cadences) ▼
+ │ reddit/HN│──▶ ┌─────────────────────────────────────────────┐
+ │ LinkedIn │──▶ │ PIPELINE  normalize → hard gate → scoring   │
+ └──────────┘    │   dedupe     │           │          │       │
+                 │              ▼           ▼          ▼       │
+                 │          DISCARDED   borderline?→ AI+RAG    │
+                 └──────────────────────────┬──────────────────┘
+                                            ▼ PENDING_REVIEW
+                 ┌─────────────────────────────────────────────┐
+                 │ ADMIN QUEUE  list/card · edit · photo ·      │
+                 │ archive · AI-enrich preview · channel picker │
+                 └──────────────────────────┬──────────────────┘
+                                 explicit 🚀 tap only
+                                            ▼
+                 ┌────────────┬─────────────┬────────────┐
+                 │ 🎓 Undergrad│ 🎓 Masters  │ 🎓 PhD      │   Telegram channels
+                 └─────┬──────┴──────┬──────┴─────┬──────┘
+                       ▼             ▼            ▼
+                 users: ⭐ save · reminders · fit analysis · tracker
 ```
 
-**Option A — with your Supabase DB (default):**
+Deep dive: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — data flow,
+schema, scoring formulas, AI router internals, scheduler table.
+
+## Quick start
+
 ```bash
+git clone <this repo> && cd moonin-ai
+cp .env.example .env        # fill it — see deploy.md §2 for every credential
 docker compose up --build bot
 ```
 
-**Option B — fully offline local Postgres (pgvector included):**
+Fully offline variant (bundled pgvector Postgres):
+
 ```bash
-# in .env set:
-# DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/moonin
+# .env: DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/moonin
 docker compose --profile localdb up --build
 ```
 
-Migrations run automatically on container start (schema + the seeded source
-registry of ~50 targets + reputation priors). First startup downloads the
-~90 MB embedding model into the `hf_cache` volume.
+Migrations (schema + all seeded sources) run automatically at container
+start. The complete runbook — credentials walkthrough, an 8-step acceptance
+test with pass criteria, Render free-tier deployment with webhook setup —
+lives in **[deploy.md](deploy.md)**.
 
-**Without Docker** (Python 3.11+):
-```bash
-python -m venv .venv && . .venv/Scripts/activate   # or bin/activate on Unix
-pip install torch --index-url https://download.pytorch.org/whl/cpu
-pip install -r requirements.txt
-playwright install chromium
-alembic upgrade head
-python -m app.main
-```
+## Configuration reference
 
-Local runs use **long polling** (`USE_WEBHOOK=false`) — no public URL needed.
+All configuration is via `.env` (template: [.env.example](.env.example)).
 
-### Smoke test
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `BOT_TOKEN` | ✅ | — | BotFather token |
+| `CHANNEL_ID_UNDERGRAD` / `_MASTERS` / `_PHD` | ✅ | — | numeric channel IDs (`-100…`); bot must be channel admin |
+| `ADMIN_USER_IDS` | ✅ | — | comma-separated Telegram user IDs with admin powers |
+| `DATABASE_URL` | ✅ | — | Postgres URL (Supabase session pooler recommended); `postgres://` auto-converted to asyncpg |
+| `GROQ_API_KEY` / `DEEPSEEK_API_KEY` / `GEMINI_API_KEY` | ≥1 | — | AI providers; router fails over between all configured ones |
+| `GROQ_RPM` / `DEEPSEEK_RPM` / `GEMINI_RPM` | | 25/30/12 | requests-per-minute throttles, kept below free-tier limits |
+| `USE_WEBHOOK` | | `false` | `false` = long polling (local), `true` = webhook (prod) |
+| `WEBHOOK_BASE_URL`, `WEBHOOK_SECRET`, `PORT` | if webhook | — /—/8080 | public https URL, header secret, listen port |
+| `NEWSLETTER_IMAP_HOST` / `_USER` / `_PASSWORD` | | — | dedicated mailbox for newsletter ingestion (blank = channel disabled gracefully) |
+| `SCRAPER_PROXY_URL` | | — | HTTP(S) proxy for all scrapers — change egress IP with zero code edits |
+| `LINKEDIN_PROXY_URL`, `LINKEDIN_ENABLED` | | — / `true` | LinkedIn-only proxy; kill switch for guest scraping |
+| `PLAYWRIGHT_ENABLED` | | `true` | headless Chromium for JS pages; set `false` on 512 MB hosts |
+| `RSS_POLL_MINUTES` / `NEWSLETTER_POLL_MINUTES` | | 20 / 15 | fast-cadence polling |
+| `WEB_SCRAPE_HOURS` / `COMMUNITY_SCRAPE_HOURS` / `LINKEDIN_SCRAPE_HOURS` | | 4 / 4 / 6 | slow-cadence scraping |
+| `EMBEDDING_MODEL` | | `all-MiniLM-L6-v2` | local CPU sentence-transformers model (RAG retrieval only) |
+| `LOG_LEVEL`, `TZ` | | `INFO`, `Asia/Yerevan` | logging & scheduler timezone |
 
-1. DM your bot `/start` → complete onboarding.
-2. As admin: `/listsources` (should show ~50 seeded targets), `/ai_status`.
-3. Wait for the first RSS cycle (≤20 min) or trigger interest faster by
-   temporarily lowering `RSS_POLL_MINUTES=2`.
-4. `/queue` → Approve something → it appears in the matching channel(s).
-5. Forward that channel post back to the bot → full detail card (+ fit
-   analysis if you uploaded a resume via `/mydocs`).
+Runtime-tunable settings (no restart, stored in DB): scoring weights, AI
+priority/disable, borderline band, minimum duration, enrichment cap, noise &
+deliverable keyword lists, all user-facing texts.
 
-## 6. Run the tests
+## Commands
 
-```bash
-pip install -r requirements.txt   # includes pytest
-pytest -v
-```
+Students get `/search`, `/saved`, `/filters`, `/mydocs`, `/profile`,
+`/language`, `/help` — plus forward-any-channel-post for instant details.
+Admins additionally get the review queue, source/taxonomy management, the AI
+router console, scoring tunables, text customization and broadcast.
 
-Covers: the hard gate (funding/eligibility/field/noise), the scoring pipeline
-(legitimacy, band, weights, English flags), AI provider failover
-(rate-limit skip, retry+backoff, live priority/disable), and forward-to-bot
-matching (origin lookup + `#opp` tag fallback).
+Every command is documented with worked examples in
+**[docs/COMMANDS.md](docs/COMMANDS.md)** — the same content is available
+inside the bot via `/help` (students) and `/adminhelp` (admins).
 
-## 7. Deploy free on Render (webhook mode)
-
-Render's free web service **sleeps after 15 min idle**; Telegram webhooks wake
-it, but the internal scraping scheduler doesn't run while asleep — so step 5
-(external keep-alive ping) is required, and also free and takes 2 minutes.
-
-1. Push this repo to GitHub.
-2. https://render.com → **New → Blueprint** → select the repo
-   (`render.yaml` is picked up automatically) → it creates the
-   `moonin-opportunities-bot` free web service.
-3. Fill in the `sync: false` env vars in the Render dashboard
-   (same values as your `.env`). Leave `WEBHOOK_BASE_URL` empty for now.
-4. After the first deploy, copy the service URL
-   (`https://moonin-opportunities-bot.onrender.com`), set it as
-   `WEBHOOK_BASE_URL`, and redeploy. On boot the app calls `setWebhook`
-   itself — check *Logs* for `webhook_started`.
-5. **Keep-alive:** at https://cron-job.org (free) create a job that GETs
-   `https://<your-service>.onrender.com/health` every **10 minutes**.
-   This keeps the instance awake so APScheduler keeps scraping.
-6. `PLAYWRIGHT_ENABLED=false` is preset in the blueprint (512 MB RAM);
-   JS-heavy sources automatically fall back to plain HTTP fetches. Sources
-   that truly need JS will yield fewer items on free hosting — that's the
-   documented trade-off; run locally or on a VM for full Playwright coverage.
-
-Free-tier note: Render free instances get 750 h/month — one always-on service
-fits exactly. Supabase free pauses after 7 days of *total* inactivity; the
-bot's scheduler traffic prevents that.
-
-## 8. Day-2 operations (all live, no redeploy)
-
-| Command | What it does |
-|---|---|
-| `/queue` | review pending items (Approve / Reject / Edit / Photo / ◀️▶️ nav / 🗂 Later) |
-| `/archive` | the "review later" shelf; items can be approved there or sent back to the queue |
-| `/discards` | recent hard-gate/low-legitimacy/AI-rejected items |
-| `/stats` | pipeline counts per status |
-| `/scrape [type\|all]` | run a scrape cycle right now (default: rss) instead of waiting for the scheduler |
-| `/addsource <type> <url> [category[:js]] [name]` | add a scrape target (types: webpage, rss, email, community, linkedin) |
-| `/listsources`, `/togglesource <id>` | manage the registry |
-| `/addfield Name \| kw1, kw2`, `/listfields`, `/togglefield <id>` | field taxonomy |
-| `/ai_status`, `/ai_setpriority groq deepseek gemini`, `/ai_enable`, `/ai_disable` | AI router |
-| `/setweight acceptance 0.6`, `/setband 40 65`, `/setminduration 15` | scoring tunables |
-| `/setcap 50` | daily cap on approve-time AI post enrichment (fallback: publish without AI) |
-| `/listtexts [filter]`, `/gettext <key>`, `/settext <lang> <key> <text>`, `/resettext` | customize ANY user-facing text/emoji live (posts, buttons, DMs, digests) — stored in DB, survives redeploys |
-| `/broadcast <message>` | DM all bot users (preview + confirm, rate-limited) |
-| `/digest` | compile weekly-digest previews on demand |
-
-A nightly job recomputes per-domain reputation from approve/reject history
-(moving average) and nudges the AI-tiebreak band based on how often you
-approve borderline items.
-
-**Approve flow with AI enrichment:** tapping Approve makes one capped AI call
-that generates a clean TL;DR, a competitiveness read and requirement bullets,
-then shows a preview with a **channel picker** (Undergrad/Masters/PhD toggles,
-pre-checked from detected degree levels) and 🚀 Publish / ✏️ Edit first /
-↩️ Use original. On cap or AI failure the preview shows the regex content.
-**Nothing ever posts to a channel without an explicit admin tap** — including
-the weekly digest, which arrives as an admin preview with Post/Skip buttons
-(or on demand via /digest).
-
-**Student-side:** ⭐ Save on every post → `/saved` list with deadline
-reminders (7/3/1 days before, 10:00 Yerevan), ✅ Applied tracking with
-outcome follow-ups ~30 days after each deadline, and a Sunday-evening
-top-5 "closing soon" digest per channel (admin-approved before posting,
-skipped when under 3 open items).
-
-## Project layout
+## Project structure
 
 ```
 app/
-  ai/           # provider abstraction (DeepSeek/Groq/Gemini) + failover router
-  analysis/     # document parsing (PDF/DOCX/TXT) + fit analysis
-  bot/          # aiogram handlers (student + admin), posting, forward matching
-  db/           # models, session, live settings service
-  embeddings/   # sentence-transformers + pgvector similarity
-  i18n/         # en.yml / hy.yml
-  pipeline/     # normalize -> hard gate -> scoring -> RAG tiebreak -> ingest
-  scheduler/    # APScheduler jobs
-  scraping/     # 5 typed source handlers + polite HTTP client + registry
-alembic/        # migrations: 0001 schema, 0002 seeds (~50 sources)
-tests/          # hard gate, scoring, AI failover, forward matching
+├── ai/            # provider abstraction, failover router, enrichment, prompts
+├── analysis/      # PDF/DOCX/TXT parsing, resume-fit analysis
+├── bot/           # aiogram: middlewares, keyboards, posting, forward matching
+│   └── handlers/  # student flows + admin/ (queue, sources, AI, texts, help)
+├── db/            # models, async engine, live settings service
+├── embeddings/    # sentence-transformers + pgvector similarity
+├── i18n/          # en.yml, hy.yml + live override layer
+├── pipeline/      # normalize → hard_gate → scoring → rag → ingest
+├── scheduler/     # APScheduler job definitions
+├── scraping/      # 5 typed handlers, polite HTTP client, registry
+└── utils/         # text helpers
+alembic/           # 0001 schema · 0002-0004,0006 source seeds · 0005 features
+docs/              # ARCHITECTURE.md, COMMANDS.md
+tests/             # 65 tests: gate, scoring, AI failover, forwarding, i18n…
 ```
+
+## Testing
+
+```bash
+pip install -r requirements.txt
+pytest -v
+```
+
+The suite covers the hard gate (funding/eligibility/field/noise rules), the
+scoring pipeline (legitimacy components, weights, English flags), AI provider
+failover (rate-limit skip, retry/backoff, live priority switching),
+forward-to-bot matching, extraction quality regressions, enrichment
+guardrails, reminder/digest scheduling, and the i18n override layer. Pure
+logic is tested without a database or network.
+
+## Deployment
+
+Local Docker Compose for development (long polling), Render free tier for
+production (webhook mode + external keep-alive ping). Full walkthrough with
+success criteria at every step: **[deploy.md](deploy.md)**.
+
+## License
+
+[MIT](LICENSE) © 2026 Arame Hayrumyan

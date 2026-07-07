@@ -76,6 +76,8 @@ the priorities:
 
 Deep dive: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — data flow,
 schema, scoring formulas, AI router internals, scheduler table.
+Full seeded source list: **[docs/SOURCES.md](docs/SOURCES.md)** (199 sources,
+student + youth tiers).
 
 ## Quick start
 

@@ -60,8 +60,21 @@ async def cmd_settext(message: Message, command: CommandObject, session: AsyncSe
     await _save_overrides(session, overrides)
     session.add(AdminAction(admin_tg_id=message.from_user.id, action="settext",
                             payload={"lang": lang, "key": key}))
-    await message.answer(f"✅ <b>{key}</b> [{lang}] is now:\n\n{text}",
+    hint = ("\n\n💡 This is a command-menu description — run /refreshcommands "
+            "to push it to Telegram." if key.startswith("cmd_") else "")
+    await message.answer(f"✅ <b>{key}</b> [{lang}] is now:\n\n{text}{hint}",
                          parse_mode="HTML")
+
+
+@router.message(Command("refreshcommands"))
+async def cmd_refreshcommands(message: Message):
+    """Re-push the localized command menus (EN default, HY, admin) to Telegram
+    — needed after editing cmd_* texts, since Telegram caches menus."""
+    from app.bot.setup import set_bot_commands
+
+    await set_bot_commands(message.bot)
+    await message.answer("✅ Command menus refreshed: EN (default), HY (Armenian "
+                         "Telegram clients), admin menu.")
 
 
 @router.message(Command("gettext"))

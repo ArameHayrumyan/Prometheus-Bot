@@ -69,6 +69,8 @@ PART_2 = """🛠 <b>Admin reference (2/2) — AI, tunables, texts</b>
    <code>/settext en btn_apply 🔥 Apply now!</code>
    HTML + emojis allowed; <b>keep the {placeholders}</b> of the original.
 /resettext &lt;en|hy&gt; &lt;key&gt; — back to default.
+/refreshcommands — push edited cmd_* menu descriptions to Telegram
+   (menus are localized: EN default, HY for Armenian Telegram clients).
 
 📢 <b>Communication</b>
 

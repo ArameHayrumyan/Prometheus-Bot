@@ -14,17 +14,27 @@ from app.logging_setup import get_logger
 
 log = get_logger("bot.setup")
 
-STUDENT_COMMANDS = [
-    BotCommand(command="search", description="🔍 Browse opportunities"),
-    BotCommand(command="saved", description="⭐ Saved & deadline reminders"),
-    BotCommand(command="filters", description="💾 Saved filters & notifications"),
-    BotCommand(command="mydocs", description="📎 My resume & documents"),
-    BotCommand(command="profile", description="👤 My profile"),
-    BotCommand(command="language", description="🌐 Language / Լեզու"),
-    BotCommand(command="help", description="ℹ️ Help"),
+# Student menu descriptions are i18n keys (cmd_*): the menu is localized per
+# Telegram client language and editable via /settext + /refreshcommands.
+STUDENT_COMMAND_KEYS = [
+    ("search", "cmd_search"),
+    ("saved", "cmd_saved"),
+    ("filters", "cmd_filters"),
+    ("mydocs", "cmd_mydocs"),
+    ("profile", "cmd_profile"),
+    ("language", "cmd_language"),
+    ("help", "cmd_help"),
 ]
 
-ADMIN_COMMANDS = STUDENT_COMMANDS + [
+
+def student_commands(lang: str) -> list[BotCommand]:
+    from app.i18n import t
+
+    return [BotCommand(command=cmd, description=t(key, lang)[:256])
+            for cmd, key in STUDENT_COMMAND_KEYS]
+
+
+ADMIN_EXTRA_COMMANDS = [
     BotCommand(command="adminhelp", description="🛠 Admin reference & examples"),
     BotCommand(command="queue", description="📥 Review queue"),
     BotCommand(command="archive", description="🗂 Shelved for later"),
@@ -73,9 +83,13 @@ def create_dispatcher() -> Dispatcher:
 
 
 async def set_bot_commands(bot: Bot) -> None:
-    await bot.set_my_commands(STUDENT_COMMANDS, scope=BotCommandScopeDefault())
+    # English is the default menu; Armenian Telegram clients get the hy menu.
+    await bot.set_my_commands(student_commands("en"), scope=BotCommandScopeDefault())
+    await bot.set_my_commands(student_commands("hy"), scope=BotCommandScopeDefault(),
+                              language_code="hy")
+    admin_menu = student_commands("en") + ADMIN_EXTRA_COMMANDS
     for admin_id in get_settings().admin_ids:
         try:
-            await bot.set_my_commands(ADMIN_COMMANDS, scope=BotCommandScopeChat(chat_id=admin_id))
+            await bot.set_my_commands(admin_menu, scope=BotCommandScopeChat(chat_id=admin_id))
         except Exception as e:
             log.warning("admin_commands_failed", admin=admin_id, error=str(e)[:150])

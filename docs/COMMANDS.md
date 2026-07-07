@@ -128,6 +128,7 @@ shows the original text.
 | `/gettext <key>` | `/gettext saved_ok` — current EN/HY values + originals |
 | `/settext <en\|hy> <key> <text…>` | `/settext en btn_apply 🔥 Apply now!` — HTML + emoji allowed; **keep the `{placeholders}`** |
 | `/resettext <en\|hy> <key>` | `/resettext en btn_apply` |
+| `/refreshcommands` | push edited `cmd_*` menu descriptions to Telegram — the ≡ command menu is localized (EN default, HY for Armenian Telegram clients) |
 | `/broadcast <message>` | `/broadcast 🎉 We just launched deadline reminders — tap ⭐ Save on any post!` → preview → confirm → rate-limited DM to every user |
 
 ### Operational habits that keep quality high

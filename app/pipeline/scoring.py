@@ -12,20 +12,24 @@ from app.pipeline.normalize import Extracted
 
 
 def legitimacy_score(extracted: Extracted, source_reputation: float,
-                     is_prestige_domain: bool) -> int:
+                     is_prestige_domain: bool, youth: bool = False) -> int:
     """0..100 rule-based quality/legitimacy score.
 
     Components: duration (0-25), funding tier (0-30),
     org legitimacy from the reputation table (0-25), deliverable (0-20).
+    youth=True uses camp-scale duration thresholds — otherwise the relaxed
+    hard gate would admit short youth programs only for this score to
+    silently discard them again (contradicting rules).
     """
     score = 0
-    # duration
+    # duration (youth: camps/olympiads are structurally short)
     d = extracted.duration_days
+    long_t, mid_t = (14, 5) if youth else (60, 21)
     if d is None:
         score += 12  # unknown: neutral-ish
-    elif d >= 60:
+    elif d >= long_t:
         score += 25
-    elif d >= 21:
+    elif d >= mid_t:
         score += 15
     else:
         score += 5

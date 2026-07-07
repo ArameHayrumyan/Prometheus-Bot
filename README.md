@@ -1,10 +1,11 @@
 # 🌙 Moonin — Funded Opportunities Bot for Armenian STEM Students
 
-> A Telegram bot + three curated channels (Undergrad · Masters · PhD) that
-> hunt down **fully- and mostly-funded** IT, Data Science, Bioinformatics and
-> Engineering opportunities across ~140 sources, filter out everything not
-> realistically attainable or genuinely valuable, and tell each student —
-> based on their actual resume — what their real chances are.
+> A Telegram bot + one curated channel — navigated by hashtags (degree, type,
+> field, location, deadline month, 🌱 youth) — that hunt down **fully- and
+> mostly-funded** IT, Data Science, Bioinformatics and Engineering
+> opportunities across ~195 sources, filter out everything not realistically
+> attainable or genuinely valuable, and tell each student — based on their
+> actual resume — what their real chances are.
 
 `Python 3.11` · `aiogram 3` · `PostgreSQL + pgvector` · `SQLAlchemy 2 async` ·
 `APScheduler` · `sentence-transformers` · `DeepSeek / Groq / Gemini` ·
@@ -46,8 +47,8 @@ the priorities:
 
 ```
                  ┌─────────────────────────────────────────────┐
-   ~140 sources  │              SOURCE REGISTRY (DB)           │
- ┌──────────┐    │  webpage │ rss │ email │ community │ linkedin│
+   ~195 sources  │              SOURCE REGISTRY (DB)           │
+ ┌──────────┐    │ webpage│rss│email│community│linkedin│telegram│
  │ web pages│──▶ └────────────────────┬────────────────────────┘
  │ RSS feeds│──▶      APScheduler     │ RawOpportunity
  │ IMAP inbox──▶  (15min…6h cadences) ▼
@@ -64,10 +65,12 @@ the priorities:
                  └──────────────────────────┬──────────────────┘
                                  explicit 🚀 tap only
                                             ▼
-                 ┌────────────┬─────────────┬────────────┐
-                 │ 🎓 Undergrad│ 🎓 Masters  │ 🎓 PhD      │   Telegram channels
-                 └─────┬──────┴──────┬──────┴─────┬──────┘
-                       ▼             ▼            ▼
+                 ┌─────────────────────────────────────────────┐
+                 │ 🏠 UNIFIED CHANNEL (+ optional 📌 free ones) │
+                 │ hashtag nav: #type #degree #youth #field    │
+                 │ #country #mar2027 · pinned /navpost index   │
+                 └──────────────────────┬──────────────────────┘
+                                        ▼
                  users: ⭐ save · reminders · fit analysis · tracker
 ```
 

@@ -101,7 +101,8 @@ async def process_raw(session: AsyncSession, raw: RawOpportunity) -> Opportunity
     domain = urlparse(raw.url).netloc.lower().removeprefix("www.")
     is_prestige = any(domain == d or domain.endswith("." + d) for d in prestige_domains)
 
-    opp.legitimacy_score = scoring.legitimacy_score(extracted, reputation, is_prestige)
+    opp.legitimacy_score = scoring.legitimacy_score(
+        extracted, reputation, is_prestige, youth=(raw.audience == "youth"))
     weights = await get_setting(session, "scoring_weights")
     opp.chance_percent = scoring.chance_percent(
         extracted, weights, reputation, is_prestige, student=None

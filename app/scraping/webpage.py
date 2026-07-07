@@ -22,6 +22,8 @@ LISTING_KEYWORDS = (
     "position", "vacan", "job", "traineeship", "studentship", "bootcamp",
     "hackathon", "competition", "program", "apply", "engineer", "developer",
     "data scien", "bioinformat", "research assistant",
+    # youth-tier listing vocabulary (olympiad/camp sources)
+    "olympiad", "contest", "camp", "summer school", "ctf", "robot",
 )
 
 SKIP_URL_PARTS = (

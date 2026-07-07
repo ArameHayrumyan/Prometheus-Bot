@@ -139,7 +139,7 @@ type .env | findstr BOT_TOKEN   # Windows: confirm .env is filled (or `grep` on 
 Checklist — all must be true:
 
 - [ ] `.env` exists next to `docker-compose.yml` and has no placeholder values left
-- [ ] bot is admin (Post messages) in all three channels
+- [ ] bot is admin (Post messages) in the main channel
 - [ ] the three channel IDs start with `-100`
 - [ ] Supabase project shows the `vector` extension enabled
 - [ ] your own Telegram ID is in `ADMIN_USER_IDS`
@@ -299,7 +299,7 @@ correct — already-seen items are deduplicated silently.
 3. Press **Approve**.
 
 ✅ **Pass:** callback answers *"Published to N channel(s)"* and the post
-appears in every channel matching the item's degree levels, with three
+appears in every channel you toggled on (🏠 main is pre-checked), with three
 buttons: 🚀 Apply / ℹ️ Details / 📊 Analyze my fit, and a `#opp<id>` footer.
 
 ⚠️ *"Published to 0 channel(s)"* = bot isn't admin in the target channel, or

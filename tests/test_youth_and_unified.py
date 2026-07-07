@@ -52,6 +52,20 @@ def test_youth_eligibility_rule_still_absolute():
     assert not result.passed
 
 
+def test_youth_legitimacy_not_punished_for_camp_duration():
+    # the gate admits a funded 7-day youth camp; the legitimacy score must not
+    # silently discard it again via student-scale duration thresholds
+    from app.pipeline.normalize import Extracted
+    from app.pipeline.scoring import legitimacy_score
+
+    camp = Extracted(opportunity_type="training", funding_tier="FULLY_FUNDED",
+                     duration_days=7, has_deliverable=True)
+    youth_score = legitimacy_score(camp, 0.85, False, youth=True)
+    student_score = legitimacy_score(camp, 0.85, False, youth=False)
+    assert youth_score > student_score
+    assert youth_score >= 66  # comfortably above the default discard floor (40)
+
+
 # ---- channel refs (plain / forum topic) ----
 
 def test_parse_channel_ref():

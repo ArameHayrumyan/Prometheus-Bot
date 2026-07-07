@@ -163,17 +163,20 @@ description as `[newsletter: <subject>]`.
    → **preview** of the exact post: AI TL;DR instead of the messy scraped
    text, 📋 requirement bullets, 📊 competitiveness line, plus:
    ```
-   [✅ Undergrad] [⬜ Masters] [⬜ Phd]
+   [✅ 🏠 Main] [⬜ 📌 Partners]      ← channel checklist (main pre-checked)
+   [🌐 Post language: EN (tap to switch)]
    [🚀 Publish to selected] [✏️ Edit first]
    [↩️ Use original (no AI)]
    [◀️ Back to queue]
    ```
-4. Channel toggles are pre-checked from detected degree levels — tap to
-   adjust (e.g. also enable Masters).
-5. **🚀 Publish to selected** → posts to those channels with auto-generated
-   buttons (Apply · ⭐ Save · Details · Analyze), notifies matching saved
-   filters, records your channel choice in the audit log, and shows the next
-   card.
+4. The 🏠 main channel is pre-checked; 📌 free channels (added via
+   /addchannel) are opt-in per post. 🌱 youth items default the post
+   language to Armenian — the 🌐 button flips it either way.
+5. **🚀 Publish to selected** → posts with auto-generated buttons
+   (Apply · ⭐ Save · Details · Analyze) and the hashtag navigation footer
+   (#type #degree #youth #field #country #mar2027), notifies matching saved
+   filters, records your channel + language choice in the audit log, and
+   shows the next card.
 
 **Edit-first path:** `✏️ Edit first` → send replacement body text (HTML ok)
 → send a photo or `/skip` → preview → Approve again (uses the cached

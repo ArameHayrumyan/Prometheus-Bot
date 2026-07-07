@@ -12,11 +12,9 @@ class Settings(BaseSettings):
     # Refs accept "-100123" or "-100123:17" (forum-supergroup topic).
     bot_token: str
     channel_id_main: str = ""
-    # legacy vars (pre-unified-channel) — used as fallback for CHANNEL_ID_MAIN
+    # legacy fallback (pre-unified-channel); other legacy CHANNEL_ID_* env
+    # vars are silently ignored via extra="ignore"
     channel_id_undergrad: str = ""
-    channel_id_masters: str = ""
-    channel_id_phd: str = ""
-    channel_id_youth: str = ""
     admin_user_ids: str = ""
 
     # Database

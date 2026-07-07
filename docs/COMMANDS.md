@@ -64,7 +64,7 @@ stored; this unlocks **📊 Analyze my fit** everywhere.
 improvement suggestions · sample resume/cover bullets you can adapt.
 
 ### Forward any channel post to the bot
-No command needed. Forward a post from any of the three channels into the
+No command needed. Forward a post from the channel into the
 bot's DM → full detail card: funding classification, deadline, duration,
 requirements, 🇦🇲 Armenian-eligibility note, English requirement checked
 against *your* stored score and expiry, your personalized chance — plus an
@@ -94,11 +94,12 @@ Admin access = your Telegram ID is in `ADMIN_USER_IDS`. Admin UI is English.
 `✅ Approve` `❌ Reject` / `✏️ Edit text` `🖼 Photo` / `◀️` `🗂 Later` `▶️` / `📋 List view`.
 
 **Approve flow:** Approve → one capped AI call generates TL;DR +
-competitiveness + requirement bullets → **preview** with a channel picker
-(`✅ Undergrad ⬜ Masters ⬜ Phd` toggles, pre-checked from detected degree
-levels) → `🚀 Publish to selected` / `✏️ Edit first` / `↩️ Use original (no
-AI)`. Nothing posts without the 🚀 tap; on AI cap/failure the preview simply
-shows the original text.
+competitiveness + requirement bullets → **preview** with a channel checklist
+(`✅ 🏠 Main` pre-checked, `⬜ 📌` free channels optional) and a 🌐 EN/HY
+post-language toggle → `🚀 Publish to selected` / `✏️ Edit first` /
+`↩️ Use original (no AI)`. Nothing posts without the 🚀 tap; on AI
+cap/failure the preview shows the original text. Published posts carry the
+hashtag navigation set (#type #degree #youth #field #country #mar2027).
 
 ### Sources & taxonomy
 

@@ -483,6 +483,31 @@ All checked → **production is live.**
 
 ---
 
+## 7b. Alternative: Oracle Cloud Always Free VM (polling mode, no sleep)
+
+A permanently free always-on VM; the bot runs in polling mode — no webhook,
+no keep-alive ping, no cold starts, full Playwright.
+
+1. **Account:** signup.oraclecloud.com (card for verification only). Home
+   region is permanent — pick `eu-frankfurt-1` or `eu-amsterdam-1`.
+2. **VM:** Compute → Create instance → Ubuntu 24.04 (aarch64) →
+   shape **VM.Standard.A1.Flex, 2 OCPU / 8 GB** → paste your SSH public key
+   (`ssh-keygen -t ed25519` locally). Only port 22 needed (default).
+   "Out of host capacity" → other availability domain, retry later, or
+   upgrade to Pay-As-You-Go (still $0 on free shapes; also exempts you from
+   idle-instance reclamation — recommended).
+3. **Setup:** `curl -fsSL https://get.docker.com | sudo sh`,
+   `sudo usermod -aG docker ubuntu`, add 2 GB swap, re-login.
+4. **Deploy:** `git clone <repo> && cd <repo>` → `scp` your `.env` over →
+   keep `USE_WEBHOOK=false`, `PLAYWRIGHT_ENABLED=true` → **stop the local
+   container first** (one environment per token) →
+   `docker compose up -d --build bot` (first ARM build ~10-15 min).
+5. **Logs:** `docker compose logs -f bot`; or Dozzle reached via SSH tunnel
+   (`ssh -L 8080:localhost:8080 …`) — no public ports.
+6. **Updates:** `git pull && docker compose up -d --build bot`. Reboots are
+   covered by `restart: unless-stopped`. The DB stays on Supabase, so the
+   VM is disposable.
+
 ## 8. Troubleshooting quick reference
 
 | Symptom | Likely cause | Fix |

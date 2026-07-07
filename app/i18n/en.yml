@@ -32,6 +32,7 @@ upload_prompt_cover: "Send a cover letter / notes as a file, or just type the te
 doc_saved: "✅ Saved and parsed «{name}» ({chars} characters extracted)."
 doc_parse_failed: "⚠️ I couldn't extract text from that file. Supported: PDF, DOCX, TXT."
 doc_too_big: "⚠️ File is too large (max 10 MB)."
+docs_limit: "⚠️ Document limit reached (10). Delete one first — /mydocs."
 btn_delete: "🗑 Delete"
 doc_deleted: "🗑 Document deleted."
 search_title: "🔍 Opportunity search — set filters, then Run:"

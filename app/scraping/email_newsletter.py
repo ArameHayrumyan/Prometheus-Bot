@@ -99,6 +99,8 @@ def extract_email_opportunities(subject: str, body: str, is_html: bool,
             if "http" not in line:
                 continue
             url = next((w for w in line.split() if w.startswith("http")), None)
+            if url:
+                url = url.rstrip(".,;:)]>\"'")  # strip trailing prose punctuation
             if not url or url in seen:
                 continue
             context = " ".join(lines[max(0, i - 2): i + 3]).strip()
@@ -128,9 +130,12 @@ def _fetch_unseen_sync(source_id: int) -> list[RawOpportunity]:
         ids = data[0].split()[:_MAX_EMAILS_PER_RUN]
         for msg_id in ids:
             status, msg_data = conn.fetch(msg_id, "(RFC822)")
-            if status != "OK" or not msg_data or msg_data[0] is None:
+            # servers interleave tuples with bare b')' markers — take the tuple
+            payload = next((p for p in (msg_data or [])
+                            if isinstance(p, tuple) and len(p) >= 2), None)
+            if status != "OK" or payload is None:
                 continue
-            msg = email.message_from_bytes(msg_data[0][1])
+            msg = email.message_from_bytes(payload[1])
             subject = _decode(msg.get("Subject"))
             body, is_html = _best_body(msg)
             found = extract_email_opportunities(subject, body, is_html, source_id)

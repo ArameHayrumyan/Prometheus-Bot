@@ -45,7 +45,7 @@ OPEN_ELIGIBILITY_PATTERNS = [
 ARMENIA_INCLUSIVE_TERMS = [
     "armenia", "eastern partnership", "eap countr", "post-soviet", "former soviet",
     "cis countr", "commonwealth of independent states", "caucasus", "south caucasus",
-    "developing countr", "low- and middle-income", "lmic", "odA-eligible", "oda recipient",
+    "developing countr", "low- and middle-income", "lmic", "oda-eligible", "oda recipient",
     "eastern europe and central asia", "europe and central asia", "council of europe",
     "erasmus\\+ partner countr", "eligible countries list",
 ]
@@ -332,6 +332,7 @@ def extract_all(title: str, text: str, taxonomy: dict[str, list[str]],
                 noise_keywords: list[str], deliverable_keywords: list[str]) -> Extracted:
     blob = f"{title}\n{text}"
     opp_type = classify_type(blob)
+    eng_test, eng_score = extract_english_req(blob)
     return Extracted(
         opportunity_type=opp_type,
         degree_levels=detect_degree_levels(blob, opp_type),
@@ -339,8 +340,8 @@ def extract_all(title: str, text: str, taxonomy: dict[str, list[str]],
         armenian_eligibility=classify_armenian_eligibility(blob),
         deadline=extract_deadline(blob),
         duration_days=extract_duration_days(blob),
-        english_req_test=extract_english_req(blob)[0],
-        english_req_score=extract_english_req(blob)[1],
+        english_req_test=eng_test,
+        english_req_score=eng_score,
         spots=(int(m.group(1)) if (m := SPOTS_PATTERN.search(blob)) else None),
         acceptance_rate=(float(m.group(1)) if (m := ACCEPTANCE_PATTERN.search(blob)) else None),
         fields_matched=match_fields(title, text, taxonomy),

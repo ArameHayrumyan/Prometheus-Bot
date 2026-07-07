@@ -105,6 +105,7 @@ shows the original text.
 | `/addsource <type> <url> [category[:js]] [name…]` | `/addsource rss https://example.org/feed/ aggregator Example feed`<br>`/addsource webpage https://lab.edu/jobs institute:js Lab careers` (`:js` = render with Playwright) |
 | `/listsources` | registry with per-source status and last-checked times |
 | `/togglesource <id>` | `/togglesource 42` — disable/enable without deleting |
+| `/sourcemeta <id> <key> <value>` | `/sourcemeta 12 selector div.jobs-list` — scope that source's scraping to a CSS container (precision mode); `-` as value removes the key |
 | `/addfield <Name> \| <kw1, kw2…>` | `/addfield Robotics \| robotics, ros, autonomous systems` |
 | `/listfields`, `/togglefield <id>` | inspect / toggle taxonomy entries |
 

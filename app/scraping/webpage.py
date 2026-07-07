@@ -26,13 +26,17 @@ LISTING_KEYWORDS = (
 
 SKIP_URL_PARTS = (
     "login", "signin", "signup", "privacy", "cookie", "terms", "facebook.com",
-    "twitter.com", "instagram.com", "youtube.com", "mailto:", "javascript:", "#",
+    "twitter.com", "instagram.com", "youtube.com",
     "linkedin.com/company", "/about", "/contact",
 )
 
 
 def _looks_like_listing(text: str, href: str) -> bool:
     t = f"{text} {href}".lower()
+    # scheme/fragment guards checked as prefixes — a legit URL may contain
+    # '#section' and must not be dropped by a substring match
+    if href.lower().startswith(("javascript:", "mailto:", "tel:", "#")):
+        return False
     if any(part in href.lower() for part in SKIP_URL_PARTS):
         return False
     if len(text.strip()) < 12:
@@ -41,14 +45,29 @@ def _looks_like_listing(text: str, href: str) -> bool:
 
 
 def extract_candidates(html: str, base_url: str, source_id: int,
-                       max_items: int = 30) -> list[RawOpportunity]:
+                       max_items: int = 30,
+                       selector: str | None = None) -> list[RawOpportunity]:
+    """Generic link+context harvesting. When a per-source CSS `selector` is
+    set (source meta, via /sourcemeta), extraction is scoped to the matching
+    container(s) — precision mode for sites where the generic heuristics
+    pick up navigation/sidebar noise."""
     soup = BeautifulSoup(html, "lxml")
     for tag in soup(["script", "style", "nav", "footer", "header"]):
         tag.decompose()
 
+    if selector:
+        anchors: list = []
+        for node in soup.select(selector):
+            if node.name == "a" and node.has_attr("href"):
+                anchors.append(node)
+            else:
+                anchors.extend(node.find_all("a", href=True))
+    else:
+        anchors = soup.find_all("a", href=True)
+
     seen_urls: set[str] = set()
     results: list[RawOpportunity] = []
-    for a in soup.find_all("a", href=True):
+    for a in anchors:
         title = " ".join(a.get_text(" ", strip=True).split())
         href = urljoin(base_url, a["href"])
         if not _looks_like_listing(title, href) or href in seen_urls:
@@ -74,6 +93,7 @@ class WebPageScraper(SourceHandler):
         else:
             resp = await polite_get(source.url)
             html = resp.text
-        items = extract_candidates(html, source.url, source.id)
+        items = extract_candidates(html, source.url, source.id,
+                                   selector=(source.meta or {}).get("selector"))
         log.info("webpage_fetched", source=source.name, candidates=len(items))
         return items

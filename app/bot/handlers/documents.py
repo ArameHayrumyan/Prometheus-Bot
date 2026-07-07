@@ -103,7 +103,7 @@ async def _save_document(message: Message, session: AsyncSession, user: User,
             select(Document.id).where(Document.user_tg_id == user.tg_id)
         )).scalars().all())
         if count >= MAX_DOCS:
-            await message.answer(t("doc_too_big", lang))
+            await message.answer(t("docs_limit", lang))
             return
 
     session.add(Document(user_tg_id=user.tg_id, doc_type=doc_type,

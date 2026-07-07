@@ -40,6 +40,9 @@ requirement bullets, daily-capped) → preview with channel toggles
    (types: webpage, rss, email, community, linkedin; «:js» = Playwright)
 /listsources — full registry with last-checked times.
 /togglesource &lt;id&gt; — <code>/togglesource 42</code> — pause/resume a source.
+/sourcemeta &lt;id&gt; &lt;key&gt; &lt;value&gt; — per-source tuning, e.g.
+   <code>/sourcemeta 12 selector div.jobs-list</code> — scope scraping to a
+   CSS container when the generic harvester picks up page noise.
 /addfield Name | kw1, kw2 —
    <code>/addfield Robotics | robotics, ros, autonomous systems</code>
 /listfields · /togglefield &lt;id&gt; — inspect / toggle taxonomy."""

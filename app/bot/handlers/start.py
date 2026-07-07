@@ -86,7 +86,7 @@ async def cb_language(query: CallbackQuery, session: AsyncSession,
     user.language = query.data.split(":")[1]
     await query.answer()
     await query.message.edit_text(t("language_set", user.language))
-    if await state.get_state() == Onboarding.language:
+    if await state.get_state() == Onboarding.language.state:
         await query.message.answer(t("choose_degree", user.language),
                                    reply_markup=degree_kb(user.language))
         await state.set_state(Onboarding.degree)

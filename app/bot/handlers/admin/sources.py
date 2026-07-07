@@ -105,6 +105,39 @@ async def cmd_scrape(message: Message, command: CommandObject):
     asyncio.create_task(run())
 
 
+@router.message(Command("sourcemeta"))
+async def cmd_sourcemeta(message: Message, command: CommandObject, session: AsyncSession):
+    """Per-source tuning without code: /sourcemeta <id> <key> <value> ('-' deletes).
+    Most useful key: selector — a CSS selector scoping webpage extraction,
+    e.g. /sourcemeta 12 selector div.jobs-list"""
+    args = (command.args or "").split(maxsplit=2)
+    if len(args) < 3 or not args[0].isdigit():
+        await message.answer(
+            "Usage: <code>/sourcemeta &lt;id&gt; &lt;key&gt; &lt;value&gt;</code> "
+            "(value <code>-</code> removes the key)\n"
+            "Example: <code>/sourcemeta 12 selector div.jobs-list</code> — scope "
+            "that source's scraping to the matching container.\n"
+            "Find ids with /listsources.",
+            parse_mode="HTML")
+        return
+    source = await session.get(Source, int(args[0]))
+    if source is None:
+        await message.answer("No such source.")
+        return
+    key, value = args[1], args[2].strip()
+    meta = dict(source.meta or {})
+    if value == "-":
+        meta.pop(key, None)
+    else:
+        meta[key] = value
+    source.meta = meta  # reassign so JSONB change is tracked
+    session.add(AdminAction(admin_tg_id=message.from_user.id, action="source_meta",
+                            payload={"source_id": source.id, "key": key, "value": value}))
+    await message.answer(
+        f"✅ Source #{source.id} meta: <code>{meta}</code>\n"
+        "Applies on the next scrape (/scrape to test now).", parse_mode="HTML")
+
+
 @router.message(Command("togglesource"))
 async def cmd_togglesource(message: Message, command: CommandObject, session: AsyncSession):
     arg = (command.args or "").strip()

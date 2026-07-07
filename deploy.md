@@ -508,6 +508,28 @@ no keep-alive ping, no cold starts, full Playwright.
    covered by `restart: unless-stopped`. The DB stays on Supabase, so the
    VM is disposable.
 
+## 7c. Alternative: Azure for Students VM (no credit card)
+
+Student verification (university email) instead of a card; includes 750 h/mo
+of a free B1s Linux VM for 12 months + $100/yr renewable credit.
+
+1. **Account:** azure.microsoft.com/free/students → verify with uni email.
+2. **VM:** portal → Create VM → Ubuntu 24.04 x64 → size **B1s** (free-tier
+   eligible, 1 GB RAM) → SSH key auth → inbound port 22 only →
+   Management tab: **Auto-shutdown OFF**.
+3. **Setup:** install Docker (get.docker.com), add user to docker group,
+   create **4 GB swap** (mandatory on 1 GB RAM), re-login.
+4. **Deploy:** clone repo, `scp` the `.env`, set `PLAYWRIGHT_ENABLED=false`
+   and keep `USE_WEBHOOK=false`, stop the local container, then
+   `docker compose build --build-arg INSTALL_PLAYWRIGHT=false bot`
+   → `docker compose up -d bot`. First cycle is slow (model download +
+   swap); steady state is fine.
+5. **Headroom dial:** resize to B1ms (2 GB, ~$18/mo from credit) or B2s
+   (4 GB, re-enable Playwright) anytime; resize back when done. Set a $5
+   budget alert in Cost Management as a guardrail.
+6. Logs/updates identical to §7b: `docker compose logs -f bot`,
+   `git pull && docker compose up -d --build bot`.
+
 ## 8. Troubleshooting quick reference
 
 | Symptom | Likely cause | Fix |

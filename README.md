@@ -190,6 +190,9 @@ bot's scheduler traffic prevents that.
 | `/ai_status`, `/ai_setpriority groq deepseek gemini`, `/ai_enable`, `/ai_disable` | AI router |
 | `/setweight acceptance 0.6`, `/setband 40 65`, `/setminduration 15` | scoring tunables |
 | `/setcap 50` | daily cap on approve-time AI post enrichment (fallback: publish without AI) |
+| `/listtexts [filter]`, `/gettext <key>`, `/settext <lang> <key> <text>`, `/resettext` | customize ANY user-facing text/emoji live (posts, buttons, DMs, digests) — stored in DB, survives redeploys |
+| `/broadcast <message>` | DM all bot users (preview + confirm, rate-limited) |
+| `/digest` | compile weekly-digest previews on demand |
 
 A nightly job recomputes per-domain reputation from approve/reject history
 (moving average) and nudges the AI-tiebreak band based on how often you

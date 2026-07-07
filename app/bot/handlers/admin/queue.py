@@ -17,8 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.enrich import enrich_opportunity
 from app.bot.handlers.admin import IsAdmin
 from app.bot.keyboards import kb
-from app.bot.posting import (FUNDING_LABEL, TYPE_EMOJI, build_post_text,
-                             notify_saved_filters, publish_opportunity)
+from app.bot.posting import (FUNDING_LABEL, build_post_text,
+                             notify_saved_filters, publish_opportunity,
+                             type_label)
 from app.bot.states import AdminEdit
 from app.constants import OppStatus
 from app.db.models import AdminAction, Opportunity
@@ -39,10 +40,9 @@ def _esc(s: str) -> str:
 
 
 def queue_card(opp: Opportunity, total: int, mode: str) -> str:
-    emoji = TYPE_EMOJI.get(opp.opportunity_type, "✨")
     lines = [
         f"{MODE_TITLE[mode]} · <b>{total}</b> item{'s' if total != 1 else ''}",
-        f"{emoji} <b>{opp.opportunity_type.upper()}</b>  ·  #opp{opp.id}",
+        f"<b>{type_label(opp.opportunity_type)}</b>  ·  #opp{opp.id}",
         "",
         f"<b>{_esc(opp.title)}</b>",
     ]
@@ -90,6 +90,7 @@ def queue_kb(opp_id: int, mode: str = "p"):
         [("◀️", f"adm:prev:{opp_id}:{mode}"),
          shelf,
          ("▶️", f"adm:skip:{opp_id}:{mode}")],
+        [("📋 List view", f"ql:{mode}:0")],
     ])
 
 
@@ -228,14 +229,73 @@ async def show_queue(message: Message, session: AsyncSession, mode: str = "p",
                          disable_web_page_preview=True)
 
 
+LIST_PAGE = 10
+
+
+async def show_list(message: Message, session: AsyncSession, mode: str = "p",
+                    page: int = 0, edit: bool = False):
+    """Compact list view: type + short title per item, numbered buttons open
+    the classic card (which keeps its own prev/next navigation)."""
+    total = await _count(session, mode)
+    if total == 0:
+        text = "📭 Review queue is empty." if mode == "p" else "🗂 Archive is empty."
+        if edit:
+            try:
+                await message.edit_text(text)
+                return
+            except Exception:
+                pass
+        await message.answer(text)
+        return
+    items = (await session.execute(
+        select(Opportunity)
+        .where(Opportunity.status == MODE_STATUS[mode])
+        .order_by(Opportunity.id)
+        .offset(page * LIST_PAGE)
+        .limit(LIST_PAGE)
+    )).scalars().all()
+    pages = (total + LIST_PAGE - 1) // LIST_PAGE
+    lines = [f"{MODE_TITLE[mode]} · <b>{total}</b> items · page {page + 1}/{pages}", ""]
+    number_buttons: list[tuple[str, str]] = []
+    for i, opp in enumerate(items, 1):
+        flags = " ⚠️" if opp.armenian_eligibility == "UNCERTAIN" else ""
+        label = type_label(opp.opportunity_type)
+        lines.append(f"<b>{i}.</b> {label} — {_esc(opp.title[:60])}{flags}")
+        number_buttons.append((str(i), f"adm:open:{opp.id}:{mode}"))
+    rows = [number_buttons[i:i + 5] for i in range(0, len(number_buttons), 5)]
+    nav: list[tuple[str, str]] = []
+    if page > 0:
+        nav.append(("◀️", f"ql:{mode}:{page - 1}"))
+    nav.append(("🃏 Card view", f"adm:open:{items[0].id}:{mode}"))
+    if (page + 1) * LIST_PAGE < total:
+        nav.append(("▶️", f"ql:{mode}:{page + 1}"))
+    rows.append(nav)
+    text = "\n".join(lines)[:4096]
+    markup = kb(rows)
+    if edit:
+        try:
+            await message.edit_text(text, reply_markup=markup, parse_mode="HTML")
+            return
+        except Exception:
+            pass
+    await message.answer(text, reply_markup=markup, parse_mode="HTML")
+
+
 @router.message(Command("queue"))
 async def cmd_queue(message: Message, session: AsyncSession):
-    await show_queue(message, session, mode="p")
+    await show_list(message, session, mode="p")
 
 
 @router.message(Command("archive"))
 async def cmd_archive(message: Message, session: AsyncSession):
-    await show_queue(message, session, mode="a")
+    await show_list(message, session, mode="a")
+
+
+@router.callback_query(F.data.startswith("ql:"))
+async def cb_queue_list_page(query: CallbackQuery, session: AsyncSession):
+    _, mode, page = query.data.split(":")
+    await query.answer()
+    await show_list(query.message, session, mode=mode, page=int(page), edit=True)
 
 
 @router.callback_query(F.data.startswith("adm:"))
@@ -246,6 +306,12 @@ async def cb_admin(query: CallbackQuery, session: AsyncSession, state: FSMContex
     opp = await session.get(Opportunity, opp_id)
     if opp is None:
         await query.answer("Gone")
+        return
+
+    if action == "open":
+        # jump from the list view straight to this item's classic card
+        await query.answer()
+        await show_queue(query.message, session, mode, after_id=opp_id - 1, edit=True)
         return
 
     if action == "skip":
@@ -465,4 +531,27 @@ async def cmd_stats(message: Message, session: AsyncSession):
     lines = ["📊 <b>Pipeline stats</b>", ""]
     for status, label in labels:
         lines.append(f"{label}: <b>{counts.get(status, 0)}</b>")
+
+    from app.db.models import SavedOpportunity, User
+    users_total = (await session.execute(
+        select(func.count()).select_from(User))).scalar_one()
+    onboarded = (await session.execute(
+        select(func.count()).select_from(User).where(User.onboarded.is_(True)))).scalar_one()
+    saves = (await session.execute(
+        select(func.count()).select_from(SavedOpportunity))).scalar_one()
+    applied = (await session.execute(
+        select(func.count()).select_from(SavedOpportunity)
+        .where(SavedOpportunity.applied_at.is_not(None)))).scalar_one()
+    outcomes = dict((await session.execute(
+        select(SavedOpportunity.outcome, func.count())
+        .where(SavedOpportunity.outcome.is_not(None))
+        .group_by(SavedOpportunity.outcome))).all())
+    lines += [
+        "",
+        "👥 <b>Users</b>",
+        f"total: <b>{users_total}</b> (onboarded: {onboarded})",
+        f"⭐ saves: <b>{saves}</b> · ✅ applied: <b>{applied}</b>",
+        f"outcomes — 🎉 {outcomes.get('accepted', 0)} accepted, "
+        f"😞 {outcomes.get('rejected', 0)} rejected",
+    ]
     await message.answer("\n".join(lines), parse_mode="HTML")

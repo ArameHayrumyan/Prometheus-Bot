@@ -20,6 +20,15 @@ log = get_logger("main")
 WEBHOOK_PATH = "/webhook"
 
 
+async def load_text_overrides() -> None:
+    """Load admin text customizations (/settext) into the i18n layer."""
+    from app.db.settings_service import get_setting
+    from app.i18n import set_overrides
+
+    async with session_scope() as session:
+        set_overrides(await get_setting(session, "i18n_overrides") or {})
+
+
 async def sync_channels() -> None:
     """Upsert the three degree-level channels from env config."""
     settings = get_settings()
@@ -77,6 +86,7 @@ async def main() -> None:
     log.info("starting", webhook=settings.use_webhook)
 
     await sync_channels()
+    await load_text_overrides()
     bot = create_bot()
     dp = create_dispatcher()
     await set_bot_commands(bot)

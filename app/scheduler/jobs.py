@@ -240,7 +240,7 @@ async def build_digest_text(session, channel: Channel, bot_username: str,
     picked = pick_digest_items(list(opps))
     if not picked:
         return None
-    lines = ["🗓 <b>Weekly digest — closing soon</b>", ""]
+    lines = [t("digest_header"), ""]
     for i, opp in enumerate(picked, 1):
         days_left = (opp.deadline - today).days
         link = f"https://t.me/{bot_username}?start=opp_{opp.id}"
@@ -249,7 +249,7 @@ async def build_digest_text(session, channel: Channel, bot_username: str,
             f"   📅 {opp.deadline} ({days_left}d left) · 🎯 ~{opp.chance_percent}%"
         )
     lines.append("")
-    lines.append("<i>⭐ Save any post to get deadline reminders.</i>")
+    lines.append(t("digest_footer"))
     return "\n".join(lines)[:4096]
 
 

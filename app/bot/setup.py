@@ -6,7 +6,7 @@ from aiogram.types import (BotCommand, BotCommandScopeChat,
                            BotCommandScopeDefault)
 
 from app.bot.handlers import analyze, documents, forward, saved, search, start
-from app.bot.handlers.admin import ai_admin, queue, sources, taxonomy
+from app.bot.handlers.admin import ai_admin, queue, sources, taxonomy, texts
 from app.bot.middlewares import DbSessionMiddleware, UserMiddleware
 from app.config import get_settings
 from app.logging_setup import get_logger
@@ -34,6 +34,8 @@ ADMIN_COMMANDS = STUDENT_COMMANDS + [
     BotCommand(command="addsource", description="➕ Add source"),
     BotCommand(command="listfields", description="🔬 Field taxonomy"),
     BotCommand(command="ai_status", description="🤖 AI router status"),
+    BotCommand(command="listtexts", description="🔤 Customize bot texts"),
+    BotCommand(command="broadcast", description="📢 Message all users"),
 ]
 
 
@@ -57,6 +59,7 @@ def create_dispatcher() -> Dispatcher:
     dp.include_router(sources.router)
     dp.include_router(ai_admin.router)
     dp.include_router(taxonomy.router)
+    dp.include_router(texts.router)
     dp.include_router(start.router)
     dp.include_router(documents.router)
     dp.include_router(search.router)

@@ -61,9 +61,16 @@ def default_body(opp: Opportunity) -> str:
     return "\n".join(lines)
 
 
+def type_label(opp_type: str, lang: str = "en") -> str:
+    """Customizable type header (emoji + label) via i18n key type_<x>."""
+    label = t(f"type_{opp_type}", lang)
+    if label == f"type_{opp_type}":  # unknown/custom type without a key
+        label = f"{TYPE_EMOJI.get(opp_type, '✨')} {opp_type.upper()}"
+    return label
+
+
 def build_post_text(opp: Opportunity, lang: str = "en") -> str:
-    emoji = TYPE_EMOJI.get(opp.opportunity_type, "✨")
-    header = f"{emoji} <b>{opp.opportunity_type.upper()}</b>"
+    header = f"<b>{type_label(opp.opportunity_type, lang)}</b>"
     if opp.country:
         header += f"  ·  🌍 {_esc(opp.country)}"
 

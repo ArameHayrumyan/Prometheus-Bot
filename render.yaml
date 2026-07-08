@@ -25,12 +25,8 @@ services:
         sync: false      # set to https://<this-service>.onrender.com after first deploy
       - key: WEBHOOK_SECRET
         generateValue: true
-      - key: CHANNEL_ID_UNDERGRAD
-        sync: false
-      - key: CHANNEL_ID_MASTERS
-        sync: false
-      - key: CHANNEL_ID_PHD
-        sync: false
+      - key: CHANNEL_ID_MAIN
+        sync: false     # the unified channel: -100... or -100...:topic_id
       - key: ADMIN_USER_IDS
         sync: false
       - key: DATABASE_URL

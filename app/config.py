@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     # Telegram — ONE hardcoded main channel; extra targets via /addchannel.
     # Refs accept "-100123" or "-100123:17" (forum-supergroup topic).
     bot_token: str
+
+    @field_validator("bot_token", mode="after")
+    @classmethod
+    def _strip_token(cls, v: str) -> str:
+        return v.strip()
     channel_id_main: str = ""
     # legacy fallback (pre-unified-channel); other legacy CHANNEL_ID_* env
     # vars are silently ignored via extra="ignore"
@@ -63,6 +68,7 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def _asyncpg_url(cls, v: str) -> str:
+        v = v.strip()  # secrets pasted with a trailing newline break the db name
         if v.startswith("postgres://"):
             v = "postgresql+asyncpg://" + v[len("postgres://"):]
         elif v.startswith("postgresql://"):

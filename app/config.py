@@ -65,6 +65,19 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     tz: str = "Asia/Yerevan"
 
+    # Strip whitespace from every credential/config string — secrets pasted
+    # into GitHub Actions / Render frequently carry a trailing newline, which
+    # corrupts auth headers (AI keys), URLs (Gemini) and the DB name.
+    @field_validator(
+        "deepseek_api_key", "groq_api_key", "gemini_api_key", "webhook_secret",
+        "newsletter_imap_host", "newsletter_imap_user", "newsletter_imap_password",
+        "scraper_proxy_url", "linkedin_proxy_url", "embedding_model", "tz",
+        mode="after",
+    )
+    @classmethod
+    def _strip_str(cls, v: str) -> str:
+        return v.strip() if isinstance(v, str) else v
+
     @field_validator("database_url")
     @classmethod
     def _asyncpg_url(cls, v: str) -> str:

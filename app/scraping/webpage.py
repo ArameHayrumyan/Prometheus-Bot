@@ -6,6 +6,7 @@ as the raw description. This is deliberately generic — per-site precision come
 from the normalization + hard gate + admin queue downstream, so a new page URL
 is just a DB row, never new code.
 """
+import re
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
@@ -33,16 +34,40 @@ SKIP_URL_PARTS = (
 )
 
 
+# Navigation / UI / filter-label anchor texts that a listing keyword would
+# otherwise let through ("Skip to job results" contains "job"). Anchored so a
+# real title like "Graduate Research Assistant" is NOT caught by the bare
+# "graduate" audience-label rule.
+JUNK_TITLE_RE = re.compile(
+    r"^(?:"
+    r"skip to\b.*"
+    r"|back to top.*"
+    r"|view (?:open|all) jobs?"
+    r"|see (?:all|more)|show all|load more|remove selection|reset\b.*"
+    r"|explore .*internships?.*"
+    r"|(?:college|high school) internships?"
+    r"|apprenticeships?"
+    r"|(?:high school|undergraduate|graduate|masters|bachelors|phd|doctoral|"
+    r"postdoctoral|postdoc|faculty|post-?baccalaureate|early career)"
+    r"(?: students?| & administrators| & early career)?"
+    r")\s*$",
+    re.IGNORECASE,
+)
+
+
 def _looks_like_listing(text: str, href: str) -> bool:
-    t = f"{text} {href}".lower()
+    stripped = text.strip()
     # scheme/fragment guards checked as prefixes — a legit URL may contain
     # '#section' and must not be dropped by a substring match
     if href.lower().startswith(("javascript:", "mailto:", "tel:", "#")):
         return False
     if any(part in href.lower() for part in SKIP_URL_PARTS):
         return False
-    if len(text.strip()) < 12:
+    if len(stripped) < 12:
         return False
+    if JUNK_TITLE_RE.match(stripped):
+        return False
+    t = f"{text} {href}".lower()
     return any(kw in t for kw in LISTING_KEYWORDS)
 
 

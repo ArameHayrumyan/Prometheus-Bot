@@ -386,107 +386,123 @@ unread in Gmail to re-process it.
 
 ---
 
-## 7. Deploy to Render (free tier, webhook mode)
+## 7. Production: Render (bot) + your PC (scraper) — split mode
 
-### 7.1 The one honest caveat first
+The canonical deployment. **Render's free tier hosts the bot** — everything
+users and admins touch: search, saves, reminders, the review queue,
+approve/reject, AI enrichment previews, publishing, digests, broadcast. All
+AI features work here because they call the Groq/DeepSeek/Gemini APIs, not a
+local model. **Scraping runs from your own machine, on demand** — full RAM,
+full Playwright (all ~200 sources incl. the 46 JS-heavy ones), writing into
+the same Supabase DB. The hosted bot never ingests, so it never loads the
+embedding model and sits comfortably inside 512 MB.
 
-Render's free web service **spins down after ~15 min without HTTP traffic**.
-Telegram webhooks wake it (with a ~50 s cold start), but **APScheduler does
-not run while it sleeps** — no scraping. The fix is an external keep-alive
-ping (step 7.5), which is also free. Skipping it = the bot answers users but
-the channels go quiet. Don't skip it.
+What each side does:
 
-Also preset in the blueprint: `PLAYWRIGHT_ENABLED=false` (512 MB RAM cap).
-JS-heavy sources yield less on Render than locally — documented trade-off.
-The embedding model (~90 MB) re-downloads on each cold start (ephemeral disk);
-first embed after a restart is slow, then cached in memory.
+| | Render (24/7) | Your PC (when you run it) |
+|---|---|---|
+| user chats, search, saves, fit analysis | ✅ | — |
+| queue review, approve → AI preview → publish | ✅ | — |
+| reminders, outcome asks, digest previews | ✅ | — |
+| acquiring new opportunities (scraping+ingest) | ❌ (`RUN_SCRAPER_JOBS=false`) | ✅ `app.scraper_cli` |
 
-### 7.2 Push to GitHub
+### 7.1 Prerequisites
 
-```bash
-git remote add origin https://github.com/<you>/moonin-ai.git
-git push -u origin main
-```
+- Repo pushed to GitHub (`.env` is gitignored — verify it's not tracked).
+- Your local `.env` filled and working (you'll paste its values into Render).
 
-(`.env` is gitignored — verify with `git status` that it's not staged.)
-
-### 7.3 Create the service from the blueprint
+### 7.2 Create the service from the blueprint
 
 1. https://render.com → sign up (GitHub login) → **New → Blueprint**.
-2. Select the repo. Render reads `render.yaml` and proposes
-   `moonin-opportunities-bot` (free web service, Docker). Approve.
-3. It will prompt for every `sync: false` env var — paste the same values as
-   your local `.env` (`BOT_TOKEN`, channel IDs, `ADMIN_USER_IDS`,
-   `DATABASE_URL`, three AI keys, IMAP trio, proxies if any).
-   **Leave `WEBHOOK_BASE_URL` empty for now** — you don't know the URL yet.
-4. First deploy will build (10–20 min: torch) and then **fail to fully start**
-   (webhook mode requires `WEBHOOK_BASE_URL`) — expected, next step fixes it.
+2. Select the repo. Render reads `render.yaml` and proposes the free Docker
+   web service — the blueprint already presets split mode:
+   `RUN_SCRAPER_JOBS=false`, `PLAYWRIGHT_ENABLED=false`, `USE_WEBHOOK=true`.
+3. It prompts for every `sync: false` env var — paste from your local `.env`:
+   `BOT_TOKEN`, `CHANNEL_ID_MAIN`, `ADMIN_USER_IDS`, `DATABASE_URL`, the
+   three AI keys, the IMAP trio (or leave blank), proxies if any.
+   **Leave `WEBHOOK_BASE_URL` empty for now.**
+4. First deploy builds (10–20 min: torch) and then **fails to fully start** —
+   expected: webhook mode needs `WEBHOOK_BASE_URL`, next step.
 
-### 7.4 Set the webhook URL
+### 7.3 Set the webhook URL
 
-1. Copy the service URL from the dashboard header:
-   `https://moonin-opportunities-bot.onrender.com` (yours will differ).
-2. Environment → set `WEBHOOK_BASE_URL` to exactly that URL → **Save** →
-   Render redeploys automatically.
-3. ✅ **Pass:** Logs show
-   `webhook_started port=8080 url=https://....onrender.com/webhook`
-   and the health check turns green.
+1. Copy the service URL from the dashboard header
+   (`https://<name>.onrender.com`).
+2. Environment → `WEBHOOK_BASE_URL` = that URL → Save → auto-redeploy.
+3. ✅ **Pass:** logs show `webhook_started` AND `scraper_jobs_disabled`.
 
-Verify from your machine that Telegram accepted the webhook:
+Verify Telegram accepted it:
 
 ```bash
 curl "https://api.telegram.org/bot<BOT_TOKEN>/getWebhookInfo"
 ```
 
-✅ **Pass:** `"url":"https://....onrender.com/webhook"`, `"pending_update_count":0`
-(or draining), and **no** `"last_error_message"`. If you see
-`wrong response from the webhook: 502` right after deploy, the instance was
-cold — send the bot a message and re-check.
+✅ **Pass:** `"url": "https://…/webhook"`, no `"last_error_message"`.
+A `502` right after deploy = cold instance; message the bot and re-check.
 
-> Polling vs webhook are mutually exclusive per token. If you later run
-> locally again, local start calls `delete_webhook` automatically — but then
-> Render is dead until it re-registers on its next restart. Rule of thumb:
-> **one environment at a time per bot token** (or create a second BotFather
-> bot for dev).
+> Webhook vs polling are exclusive per token. Never `docker compose up` the
+> bot locally while Render runs — it would steal the webhook. The local
+> scraper CLI (§7.5) is safe: it only *sends* messages, never receives.
 
-### 7.5 Keep-alive ping (mandatory)
+### 7.4 Keep-alive ping (still required in split mode)
 
-1. https://cron-job.org → free account → **Create cronjob**:
-   - URL: `https://<your-service>.onrender.com/health`
-   - Schedule: **every 10 minutes**
-   - Notifications: on failure only (optional but useful — it doubles as
-     uptime monitoring).
-2. ✅ **Pass:** cron-job.org execution history shows HTTP 200 with body
-   `{"status": "ok"}`, and after 30+ idle minutes the Render logs show **no**
-   "spinning down" events during the day.
+Render free sleeps after ~15 min idle. Cold starts on user messages are
+tolerable — but the **reminder/digest/expiry cron jobs run inside the
+instance and cannot fire while it sleeps**. A user's "⏰ 3 days left" DM at
+10:00 needs the instance awake at 10:00.
+
+1. https://cron-job.org (free) → Create cronjob →
+   URL `https://<service>.onrender.com/health`, every **10 minutes**,
+   notify on failure (doubles as uptime monitoring).
+2. ✅ **Pass:** execution history all HTTP 200 `{"status": "ok"}`.
+
+### 7.5 Scraping from your PC (the other half)
+
+Whenever you want fresh opportunities — daily is plenty:
+
+```bash
+docker compose run --rm bot python -m app.scraper_cli all      # everything
+docker compose run --rm bot python -m app.scraper_cli rss      # quick top-up
+docker compose run --rm bot python -m app.scraper_cli webpage telegram
+```
+
+- Uses your **local** `.env` — keep `RUN_SCRAPER_JOBS=true` and
+  `PLAYWRIGHT_ENABLED=true` there (full JS coverage locally).
+- Ingests into the shared DB, then DMs you "N new items — /queue"; you review
+  and publish from the hosted bot on any device.
+- Dedupe makes overlapping/repeated runs harmless; `all` takes a while
+  (polite per-domain spacing) — fire and forget.
+- If you type `/scrape` in the hosted bot, it reminds you of this section
+  instead of scraping.
 
 ### 7.6 Post-deploy acceptance test (10 minutes)
 
-Re-run the essentials against production:
-
-- [ ] DM the bot `/start` → responds within a few seconds (cold start may add
-      ~1 min the very first time)
+- [ ] DM `/start` → responds (first-ever message may take ~1 min if cold)
 - [ ] `/ai_status`, `/listsources`, `/stats` respond
-- [ ] Wait ≤ 20 min → `scrape_cycle_done` appears in Render logs
-- [ ] `/queue` → approve one item → lands in the channel
-- [ ] Forward it back → detail card resolves
-- [ ] `getWebhookInfo` still clean, cron-job history all-green
+- [ ] Render logs show `scraper_jobs_disabled` (split mode active)
+- [ ] On your PC: `…scraper_cli rss` → completion DM arrives
+- [ ] `/queue` → approve one → AI preview appears → 🚀 → lands in the channel
+- [ ] Forward the post back to the bot → detail card resolves
+- [ ] `getWebhookInfo` clean; cron-job history green
 
 All checked → **production is live.**
 
 ### 7.7 Free-tier budget notes
 
 - Render free: 750 instance-hours/month = exactly one always-on service.
-- Supabase free: pauses after ~7 days of zero traffic — the scheduler's
-  constant queries prevent that as long as keep-alive works.
-- The keep-alive ping (~4,300 requests/month) costs nothing on either side.
+- Supabase free: pauses after ~7 days of zero traffic — keep-alive +
+  reminder jobs generate enough to prevent that.
+- The ping (~4,300 req/month) costs nothing on either side.
 
 ---
 
-## 7b. Alternative: Oracle Cloud Always Free VM (polling mode, no sleep)
+## 7b. Alternative: Oracle Cloud Always Free VM (all-in-one, no split)
 
-A permanently free always-on VM; the bot runs in polling mode — no webhook,
-no keep-alive ping, no cold starts, full Playwright.
+Only if you outgrow split mode and want bot + scheduler-driven scraping in
+one always-on box (keep `RUN_SCRAPER_JOBS=true` there): a permanently free
+VM in polling mode — no webhook, no keep-alive, no cold starts, full
+Playwright. Note: A1 capacity for free-tier accounts is scarce; upgrading
+the account to Pay-As-You-Go (still $0 on free shapes) usually resolves it.
 
 1. **Account:** signup.oraclecloud.com (card for verification only). Home
    region is permanent — pick `eu-frankfurt-1` or `eu-amsterdam-1`.
@@ -529,36 +545,6 @@ of a free B1s Linux VM for 12 months + $100/yr renewable credit.
    budget alert in Cost Management as a guardrail.
 6. Logs/updates identical to §7b: `docker compose logs -f bot`,
    `git pull && docker compose up -d --build bot`.
-
-## 7d. Split mode: Render bot + local scraper (recommended combo)
-
-The bot serves users from Render's free tier while ALL scraping runs from
-your own machine (full RAM, full Playwright) against the shared Supabase DB.
-Sending messages doesn't conflict with the hosted webhook — only polling
-would — so the local scraper can DM you "N new items" while Render runs.
-
-**Render side:** deploy per §7; the blueprint already sets
-`RUN_SCRAPER_JOBS=false` (and `PLAYWRIGHT_ENABLED=false`). The instance only
-handles user interactions, reminders, digest previews and expiry — it never
-loads the embedding model, so 512 MB is comfortable. `/scrape` on this
-instance replies with instructions instead of scraping.
-⚠️ Keep the cron-job.org `/health` ping anyway: reminder/digest cron jobs
-can't fire while the instance sleeps.
-
-**Local side (your PC, whenever you choose):**
-```bash
-docker compose run --rm bot python -m app.scraper_cli          # rss (fast)
-docker compose run --rm bot python -m app.scraper_cli webpage telegram
-docker compose run --rm bot python -m app.scraper_cli all      # everything
-```
-Uses your local `.env` (keep `RUN_SCRAPER_JOBS=true` and
-`PLAYWRIGHT_ENABLED=true` locally), ingests into the same DB, then DMs you
-the summary — review in the bot as usual. Do NOT `docker compose up` locally
-while Render runs (that starts the bot itself); `compose run … scraper_cli`
-is the safe form.
-
-**Rhythm that works:** `all` once a day (or whenever), `rss` more often if
-you feel like it. Dedupe makes overlapping runs harmless.
 
 ## 8. Troubleshooting quick reference
 

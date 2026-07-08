@@ -1,5 +1,7 @@
-# Render Blueprint — free web service running the bot in webhook mode.
-# See README "Deploy to Render" for the full walkthrough (incl. keep-alive ping).
+# Render Blueprint — free web service, bot in POLLING mode (split: scraping
+# runs from the operator's machine or GitHub Actions). Polling needs no
+# webhook URL/secret; the app binds a /health port so the web service starts,
+# and the cron-job.org keep-alive ping keeps it awake for reminders/digest.
 services:
   - type: web
     name: moonin-opportunities-bot
@@ -8,23 +10,17 @@ services:
     healthCheckPath: /health
     envVars:
       - key: USE_WEBHOOK
-        value: "true"
+        value: "false"   # polling: no webhook URL/secret needed
       - key: PLAYWRIGHT_ENABLED
-        value: "false"   # 512MB free instance: JS-heavy pages fall back to httpx
+        value: "false"   # 512MB free instance; scraping happens off-box anyway
       - key: RUN_SCRAPER_JOBS
-        value: "false"   # split mode: scraping runs from the operator's machine
-                         # (python -m app.scraper_cli); this instance only serves
-                         # users + reminders/digest/expiry
+        value: "false"   # split mode: scraping via scraper_cli (local / GH Actions)
       - key: PORT
         value: "8080"
       - key: TZ
         value: Asia/Yerevan
       - key: BOT_TOKEN
         sync: false
-      - key: WEBHOOK_BASE_URL
-        sync: false      # set to https://<this-service>.onrender.com after first deploy
-      - key: WEBHOOK_SECRET
-        generateValue: true
       - key: CHANNEL_ID_MAIN
         sync: false     # the unified channel: -100... or -100...:topic_id
       - key: ADMIN_USER_IDS

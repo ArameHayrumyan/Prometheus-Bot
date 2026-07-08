@@ -1,0 +1,63 @@
+name: Scrape opportunities
+
+# Fully automated acquisition, off your laptop. Runs the same pipeline as
+# `app.scraper_cli` on GitHub's runners (full RAM + Playwright) against the
+# shared Supabase DB, then the bot DMs you "N new items — /queue".
+on:
+  schedule:
+    # 06:00 & 16:00 UTC = 10:00 & 20:00 Asia/Yerevan. Cron is always UTC.
+    - cron: "0 6 * * *"
+    - cron: "0 16 * * *"
+  workflow_dispatch:            # the manual "Run workflow" button + gh CLI
+    inputs:
+      types:
+        description: "Source types (space-separated): rss webpage email community telegram linkedin | all"
+        default: "all"
+        required: true
+
+concurrency:                    # never overlap two scrape runs
+  group: scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install deps
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Cache embedding model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-all-minilm-l6-v2
+
+      - name: Run scraper
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ADMIN_USER_IDS: ${{ secrets.ADMIN_USER_IDS }}
+          CHANNEL_ID_MAIN: ${{ secrets.CHANNEL_ID_MAIN }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          NEWSLETTER_IMAP_HOST: ${{ secrets.NEWSLETTER_IMAP_HOST }}
+          NEWSLETTER_IMAP_USER: ${{ secrets.NEWSLETTER_IMAP_USER }}
+          NEWSLETTER_IMAP_PASSWORD: ${{ secrets.NEWSLETTER_IMAP_PASSWORD }}
+          SCRAPER_PROXY_URL: ${{ secrets.SCRAPER_PROXY_URL }}
+          RUN_SCRAPER_JOBS: "true"
+          PLAYWRIGHT_ENABLED: "true"
+          TZ: Asia/Yerevan
+        run: |
+          python -m app.scraper_cli ${{ github.event.inputs.types || 'all' }}

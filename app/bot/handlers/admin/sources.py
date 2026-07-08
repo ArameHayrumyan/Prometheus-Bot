@@ -77,6 +77,15 @@ async def cmd_listsources(message: Message, session: AsyncSession):
 @router.message(Command("scrape"))
 async def cmd_scrape(message: Message, command: CommandObject):
     """Trigger a scrape cycle immediately instead of waiting for the scheduler."""
+    from app.config import get_settings
+
+    if not get_settings().run_scraper_jobs:
+        await message.answer(
+            "⚠️ Scraping is disabled on this instance (RUN_SCRAPER_JOBS=false) — "
+            "it runs from the operator's machine instead:\n"
+            "<code>docker compose run --rm bot python -m app.scraper_cli all</code>",
+            parse_mode="HTML")
+        return
     valid = [s.value for s in SourceType]
     arg = (command.args or "rss").strip().lower()
     types = valid if arg == "all" else [arg]

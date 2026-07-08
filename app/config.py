@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     newsletter_imap_password: str = ""
 
     # Scraping
+    # false = this instance only serves bot interactions (reminders/digest/
+    # expiry still run); scraping is done elsewhere via `python -m app.scraper_cli`
+    run_scraper_jobs: bool = True
     scraper_proxy_url: str = ""
     linkedin_proxy_url: str = ""
     linkedin_enabled: bool = True

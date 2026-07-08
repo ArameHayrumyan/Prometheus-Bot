@@ -11,6 +11,10 @@ services:
         value: "true"
       - key: PLAYWRIGHT_ENABLED
         value: "false"   # 512MB free instance: JS-heavy pages fall back to httpx
+      - key: RUN_SCRAPER_JOBS
+        value: "false"   # split mode: scraping runs from the operator's machine
+                         # (python -m app.scraper_cli); this instance only serves
+                         # users + reminders/digest/expiry
       - key: PORT
         value: "8080"
       - key: TZ

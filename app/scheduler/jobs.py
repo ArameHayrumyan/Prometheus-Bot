@@ -290,21 +290,24 @@ async def weekly_digest(bot: Bot) -> None:
 def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     s = get_settings()
     scheduler = AsyncIOScheduler(timezone=s.tz)
-    scheduler.add_job(run_source_types, "interval", minutes=s.rss_poll_minutes,
-                      args=[bot, ["rss"]], id="rss", max_instances=1, coalesce=True,
-                      misfire_grace_time=300)
-    scheduler.add_job(run_source_types, "interval", minutes=s.newsletter_poll_minutes,
-                      args=[bot, ["email"]], id="email", max_instances=1, coalesce=True,
-                      misfire_grace_time=300)
-    scheduler.add_job(run_source_types, "interval", hours=s.web_scrape_hours,
-                      args=[bot, ["webpage"]], id="webpage", max_instances=1, coalesce=True,
-                      misfire_grace_time=3600)
-    scheduler.add_job(run_source_types, "interval", hours=s.community_scrape_hours,
-                      args=[bot, ["community", "telegram"]], id="community",
-                      max_instances=1, coalesce=True, misfire_grace_time=3600)
-    scheduler.add_job(run_source_types, "interval", hours=s.linkedin_scrape_hours,
-                      args=[bot, ["linkedin"]], id="linkedin", max_instances=1,
-                      coalesce=True, misfire_grace_time=3600)
+    if s.run_scraper_jobs:
+        scheduler.add_job(run_source_types, "interval", minutes=s.rss_poll_minutes,
+                          args=[bot, ["rss"]], id="rss", max_instances=1, coalesce=True,
+                          misfire_grace_time=300)
+        scheduler.add_job(run_source_types, "interval", minutes=s.newsletter_poll_minutes,
+                          args=[bot, ["email"]], id="email", max_instances=1, coalesce=True,
+                          misfire_grace_time=300)
+        scheduler.add_job(run_source_types, "interval", hours=s.web_scrape_hours,
+                          args=[bot, ["webpage"]], id="webpage", max_instances=1, coalesce=True,
+                          misfire_grace_time=3600)
+        scheduler.add_job(run_source_types, "interval", hours=s.community_scrape_hours,
+                          args=[bot, ["community", "telegram"]], id="community",
+                          max_instances=1, coalesce=True, misfire_grace_time=3600)
+        scheduler.add_job(run_source_types, "interval", hours=s.linkedin_scrape_hours,
+                          args=[bot, ["linkedin"]], id="linkedin", max_instances=1,
+                          coalesce=True, misfire_grace_time=3600)
+    else:
+        log.info("scraper_jobs_disabled", hint="run scraping via app.scraper_cli")
     scheduler.add_job(update_reputation, "cron", hour=3, minute=30, id="reputation")
     scheduler.add_job(expire_opportunities, "cron", hour=0, minute=15, id="expire")
     scheduler.add_job(send_deadline_reminders, "cron", hour=10, minute=0,

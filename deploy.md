@@ -530,6 +530,36 @@ of a free B1s Linux VM for 12 months + $100/yr renewable credit.
 6. Logs/updates identical to §7b: `docker compose logs -f bot`,
    `git pull && docker compose up -d --build bot`.
 
+## 7d. Split mode: Render bot + local scraper (recommended combo)
+
+The bot serves users from Render's free tier while ALL scraping runs from
+your own machine (full RAM, full Playwright) against the shared Supabase DB.
+Sending messages doesn't conflict with the hosted webhook — only polling
+would — so the local scraper can DM you "N new items" while Render runs.
+
+**Render side:** deploy per §7; the blueprint already sets
+`RUN_SCRAPER_JOBS=false` (and `PLAYWRIGHT_ENABLED=false`). The instance only
+handles user interactions, reminders, digest previews and expiry — it never
+loads the embedding model, so 512 MB is comfortable. `/scrape` on this
+instance replies with instructions instead of scraping.
+⚠️ Keep the cron-job.org `/health` ping anyway: reminder/digest cron jobs
+can't fire while the instance sleeps.
+
+**Local side (your PC, whenever you choose):**
+```bash
+docker compose run --rm bot python -m app.scraper_cli          # rss (fast)
+docker compose run --rm bot python -m app.scraper_cli webpage telegram
+docker compose run --rm bot python -m app.scraper_cli all      # everything
+```
+Uses your local `.env` (keep `RUN_SCRAPER_JOBS=true` and
+`PLAYWRIGHT_ENABLED=true` locally), ingests into the same DB, then DMs you
+the summary — review in the bot as usual. Do NOT `docker compose up` locally
+while Render runs (that starts the bot itself); `compose run … scraper_cli`
+is the safe form.
+
+**Rhythm that works:** `all` once a day (or whenever), `rss` more often if
+you feel like it. Dedupe makes overlapping runs harmless.
+
 ## 8. Troubleshooting quick reference
 
 | Symptom | Likely cause | Fix |

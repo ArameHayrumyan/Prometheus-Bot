@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     newsletter_imap_user: str = ""
     newsletter_imap_password: str = ""
 
+    # Reddit OAuth (free "script" app) — lets the community scraper use
+    # oauth.reddit.com, which works from datacenter IPs unlike the public
+    # .json endpoint. Blank = fall back to public JSON (works from home IPs).
+    reddit_client_id: str = ""
+    reddit_client_secret: str = ""
+
     # Scraping
     # false = this instance only serves bot interactions (reminders/digest/
     # expiry still run); scraping is done elsewhere via `python -m app.scraper_cli`
@@ -72,6 +78,7 @@ class Settings(BaseSettings):
         "deepseek_api_key", "groq_api_key", "gemini_api_key", "webhook_secret",
         "newsletter_imap_host", "newsletter_imap_user", "newsletter_imap_password",
         "scraper_proxy_url", "linkedin_proxy_url", "embedding_model", "tz",
+        "reddit_client_id", "reddit_client_secret",
         mode="after",
     )
     @classmethod

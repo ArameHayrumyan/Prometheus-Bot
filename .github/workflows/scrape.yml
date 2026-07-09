@@ -56,6 +56,8 @@ jobs:
           NEWSLETTER_IMAP_USER: ${{ secrets.NEWSLETTER_IMAP_USER }}
           NEWSLETTER_IMAP_PASSWORD: ${{ secrets.NEWSLETTER_IMAP_PASSWORD }}
           SCRAPER_PROXY_URL: ${{ secrets.SCRAPER_PROXY_URL }}
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
           RUN_SCRAPER_JOBS: "true"
           PLAYWRIGHT_ENABLED: "true"
           TZ: Asia/Yerevan

@@ -8,6 +8,7 @@ from app.db.models import Source
 from app.logging_setup import get_logger
 from app.scraping.base import RawOpportunity, SourceHandler
 from app.scraping.http import polite_get
+from app.scraping.reddit_auth import oauth_get_json, reddit_configured
 
 log = get_logger("scraping.community")
 
@@ -29,8 +30,18 @@ class CommunityBoardScraper(SourceHandler):
         return await self._fetch_reddit(source)
 
     async def _fetch_reddit(self, source: Source) -> list[RawOpportunity]:
-        resp = await polite_get(source.url, headers={"User-Agent": "moonin-opportunities-bot/1.0"})
-        data = resp.json()
+        # OAuth (oauth.reddit.com) works from datacenter IPs; the public .json
+        # endpoint is blocked there. Fall back to public JSON when unconfigured.
+        if reddit_configured():
+            try:
+                data = await oauth_get_json(source.url)
+            except Exception as e:
+                log.warning("reddit_oauth_failed", source=source.name, error=str(e)[:200])
+                return []
+        else:
+            resp = await polite_get(
+                source.url, headers={"User-Agent": "moonin-opportunities-bot/1.0"})
+            data = resp.json()
         results: list[RawOpportunity] = []
         for child in data.get("data", {}).get("children", []):
             post = child.get("data", {})

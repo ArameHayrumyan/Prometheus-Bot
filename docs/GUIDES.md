@@ -280,6 +280,25 @@ failover live.
 
 ---
 
+## 8b. Unblocking Reddit (OAuth)
+
+Reddit's public `.json` endpoint is blocked from datacenter IPs (GitHub
+Actions, VMs). The free official API isn't — set it up once:
+
+1. Log into the account you want the app under → https://www.reddit.com/prefs/apps
+2. **Create app** → type **script** → name anything → redirect uri
+   `http://localhost:8080` → Create.
+3. Copy the **client id** (under the app name) and the **secret**.
+4. Add them:
+   - locally in `.env`: `REDDIT_CLIENT_ID=…`, `REDDIT_CLIENT_SECRET=…`
+   - GitHub → Settings → Secrets → Actions: same two names.
+5. Done. The community scraper now uses `oauth.reddit.com` (works from
+   Actions). Blank creds fall back to public JSON (works from home IPs).
+
+Verify: `docker compose run --rm bot python -m app.scraper_cli community`
+→ reddit sources should return matches instead of 403.
+
+
 ## 8. What a student experiences (so you can support them)
 
 1. Finds `@your_channel` → sees a post → taps **⭐ Save** → bot opens with

@@ -138,7 +138,7 @@ def queue_kb(opp_id: int, mode: str = "p"):
         [("◀️", f"adm:prev:{opp_id}:{mode}"),
          shelf,
          ("▶️", f"adm:skip:{opp_id}:{mode}")],
-        [("📋 List view", f"ql:{mode}:0")],
+        [("📋 List view", f"ql:{mode}:cur")],
     ])
 
 
@@ -249,6 +249,7 @@ async def show_list(message: Message, session: AsyncSession, state: FSMContext,
     if (page + 1) * LIST_PAGE < total:
         nav.append(("▶️", f"ql:{mode}:{page + 1}"))
     rows.append(nav)
+    await state.update_data(list_page=page)  # remember for card -> list return
     text = "\n".join(lines)[:4096]
     markup = kb(rows)
     if edit:
@@ -282,6 +283,8 @@ async def cmd_archive(message: Message, session: AsyncSession, state: FSMContext
 async def cb_queue_list_page(query: CallbackQuery, session: AsyncSession,
                              state: FSMContext):
     _, mode, page = query.data.split(":")
+    if page == "cur":  # returning from a card -> the page it was opened from
+        page = (await state.get_data()).get("list_page", 0)
     await query.answer()
     await state.update_data(adminmode=mode)
     await show_list(query.message, session, state, mode=mode, page=int(page), edit=True)
@@ -336,7 +339,9 @@ def preview_kb(opp: Opportunity, mode: str, lang: str, selected: set[int],
                  ("✏️ Edit first", f"adm:edit:{opp.id}:{mode}")])
     if opp.enrichment:
         rows.append([("↩️ Use original (no AI)", f"adm:orig:{opp.id}:{mode}")])
-    rows.append([("◀️ Back to queue", f"adm:skip:{opp.id - 1}:{mode}")])
+    # reopen THIS item's card (not skip-to-next, which could land elsewhere
+    # once filters are applied)
+    rows.append([("◀️ Back to this item", f"adm:open:{opp.id}:{mode}")])
     return kb(rows)
 
 

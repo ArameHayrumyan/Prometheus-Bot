@@ -9,7 +9,8 @@ import html
 import re
 
 from aiogram import Bot
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import (InlineKeyboardButton, InlineKeyboardMarkup,
+                           LinkPreviewOptions)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -85,6 +86,27 @@ def _esc(s: str) -> str:
     return html.escape(s or "", quote=False)
 
 
+_URL_RE = re.compile(r"https?://[^\s<>\"')\]]+")
+
+
+def body_links(opp: Opportunity, limit: int = 3) -> list[str]:
+    """Links embedded in the scraped description (minus the primary apply
+    link). The AI TL;DR replaces that description, so these must be
+    re-attached explicitly or they'd be silently lost."""
+    primary = {(opp.apply_url or "").rstrip("/"), (opp.url or "").rstrip("/")}
+    seen: set[str] = set()
+    out: list[str] = []
+    for match in _URL_RE.findall(opp.description or ""):
+        url = match.rstrip(".,;:)]}\"'")
+        if url.rstrip("/") in primary or url in seen:
+            continue
+        seen.add(url)
+        out.append(url)
+        if len(out) >= limit:
+            break
+    return out
+
+
 def default_body(opp: Opportunity) -> str:
     lines = [f"<b>{_esc(opp.title)}</b>"]
     if opp.org:
@@ -119,6 +141,11 @@ def build_post_text(opp: Opportunity, lang: str = "en") -> str:
             lines.append(f"🏛 <i>{_esc(opp.org)}</i>")
         lines.append("")
         lines.append(_esc(enr["tldr"]))
+        # links from the replaced description must survive the AI rewrite
+        links = body_links(opp)
+        if links:
+            lines.append("")
+            lines.extend(f"🔗 {_esc(u)}" for u in links)
         body = "\n".join(lines)
     else:
         body = default_body(opp)
@@ -193,10 +220,16 @@ async def publish_opportunity(bot: Bot, session: AsyncSession, opp: Opportunity,
                     message_thread_id=channel.thread_id,
                 )
             else:
+                # Telegram fetches the opportunity page's own preview image —
+                # free post images with zero scraping on our side.
                 msg = await bot.send_message(
                     channel.tg_channel_id, text[:4096],
                     reply_markup=keyboard, parse_mode="HTML",
-                    disable_web_page_preview=True,
+                    link_preview_options=LinkPreviewOptions(
+                        url=opp.apply_url or opp.url,
+                        prefer_large_media=True,
+                        show_above_text=True,
+                    ),
                     message_thread_id=channel.thread_id,
                 )
             session.add(ChannelPost(

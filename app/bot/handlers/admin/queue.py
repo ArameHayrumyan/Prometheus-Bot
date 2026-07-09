@@ -431,12 +431,22 @@ async def _publish_now(query: CallbackQuery, session: AsyncSession,
                             payload={"channels": channel_ids, "lang": lang}))
     opp.status = OppStatus.APPROVED
     posted = await publish_opportunity(query.bot, session, opp, channel_ids, lang)
-    await session.flush()
-    await query.answer(f"Published to {posted} channel(s) {note}".strip())
-    if posted:
-        await notify_saved_filters(query.bot, session, opp)
-    qf = await get_qf(state)
-    await show_queue(query.message, session, mode, qf, after_id=opp.id, edit=True)
+    # COMMIT NOW: the channel post is already sent (an irreversible side effect).
+    # Any later failure (stale callback answer, edit error, network blip) must
+    # NOT roll back the PUBLISHED status / ChannelPost rows, or the post would
+    # exist in the channel while /search and forward-matching stay broken.
+    await session.commit()
+    try:
+        await query.answer(f"Published to {posted} channel(s) {note}".strip())
+    except Exception:
+        pass
+    try:
+        if posted:
+            await notify_saved_filters(query.bot, session, opp)
+        qf = await get_qf(state)
+        await show_queue(query.message, session, mode, qf, after_id=opp.id, edit=True)
+    except Exception as e:
+        log.warning("post_publish_side_effect_failed", opp_id=opp.id, error=str(e)[:200])
 
 
 # -------------------------------------------------------- card actions ------

@@ -1,13 +1,14 @@
 """Ingest orchestration: raw item -> dedupe -> extract -> hard gate -> scoring
 -> optional AI tiebreak -> PENDING_REVIEW (admin queue) or DISCARDED (log).
 """
+import re
 from urllib.parse import urlparse
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import Eligibility, OppStatus
-from app.db.models import FieldTaxonomy, Opportunity, SourceReputation
+from app.db.models import FieldTaxonomy, Opportunity, Source, SourceReputation
 from app.db.settings_service import get_setting
 from app.embeddings.service import store_embedding
 from app.logging_setup import get_logger
@@ -31,6 +32,22 @@ async def get_reputation(session: AsyncSession, url: str) -> float:
         select(SourceReputation).where(SourceReputation.domain == domain)
     )).scalar_one_or_none()
     return row.score if row else 0.5
+
+
+async def resolve_country(session: AsyncSession, raw: RawOpportunity,
+                          extracted_country: str | None) -> str | None:
+    """Give the opportunity a country so the country filter is meaningful:
+    text-extracted country > the source's known country > 'Remote' if the
+    listing says so. Without this, opp.country is almost always empty."""
+    if extracted_country:
+        return extracted_country
+    if raw.source_id is not None:
+        src = await session.get(Source, raw.source_id)
+        if src and src.country:
+            return src.country
+    if re.search(r"\bremote\b", f"{raw.title}\n{raw.text[:600]}", re.IGNORECASE):
+        return "Remote"
+    return None
 
 
 async def already_seen(session: AsyncSession, raw_hash: str) -> bool:
@@ -73,6 +90,7 @@ async def process_raw(session: AsyncSession, raw: RawOpportunity) -> Opportunity
         audience=raw.audience,
         degree_levels=extracted.degree_levels,
         fields=extracted.fields_matched,
+        country=await resolve_country(session, raw, extracted.country),
         deadline=extracted.deadline,
         duration_days=extracted.duration_days,
         funding_tier=extracted.funding_tier,

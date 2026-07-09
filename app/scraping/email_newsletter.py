@@ -85,9 +85,19 @@ def extract_email_opportunities(subject: str, body: str, is_html: bool,
             seen.add(href)
             container = a.find_parent(["td", "li", "p", "div", "table"]) or a
             context = " ".join(container.get_text(" ", strip=True).split())[:3000]
+            # embed the container's other links into the text so the AI TL;DR
+            # (which replaces the description) can't drop them — visible text
+            # doesn't carry hrefs, so without this email links are lost
+            extra = [
+                x["href"] for x in container.find_all("a", href=True)
+                if x.get("href", "").startswith("http")
+                and x["href"] != href
+                and not any(p in x["href"].lower() for p in SKIP_URL_PARTS)
+            ][:4]
+            link_line = ("\nLinks: " + " ".join(dict.fromkeys(extra))) if extra else ""
             results.append(RawOpportunity(
                 source_id=source_id, url=href, title=title[:500],
-                text=f"[newsletter: {subject}] {context}",
+                text=f"[newsletter: {subject}] {context}{link_line}",
                 org=urlparse(href).netloc,
             ))
             if len(results) >= _MAX_LINKS_PER_EMAIL:

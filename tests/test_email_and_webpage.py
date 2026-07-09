@@ -35,6 +35,21 @@ def test_email_html_context_carries_newsletter_subject():
     assert all(i.text.startswith("[newsletter: ProFellow weekly]") for i in items)
 
 
+def test_email_html_embeds_secondary_links_for_ai_preservation():
+    html = """<td>
+      <a href="https://uni.example.org/phd-scholarship">Fully funded PhD scholarship in Data Science</a>
+      <a href="https://uni.example.org/apply-now">Apply</a>
+      <a href="https://uni.example.org/deadline-info">Deadline details</a>
+    </td>"""
+    items = extract_email_opportunities("Digest", html, True, source_id=1)
+    assert items, "should extract the scholarship listing"
+    text = items[0].text
+    # secondary links embedded so the AI TL;DR (which replaces the body) can't drop them
+    assert "apply-now" in text and "deadline-info" in text
+    # the primary link is not duplicated into the embedded list
+    assert text.count("phd-scholarship") == 0
+
+
 PLAIN_EMAIL = """New opportunities this week:
 
 1) Fully funded PhD position in bioinformatics, apply at

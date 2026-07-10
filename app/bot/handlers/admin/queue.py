@@ -133,6 +133,7 @@ def queue_kb(opp_id: int, mode: str = "p"):
     return kb([
         [("✅ Approve", f"adm:approve:{opp_id}:{mode}"),
          ("❌ Reject", f"adm:reject:{opp_id}:{mode}")],
+        [("📤 Publish without AI", f"adm:noai:{opp_id}:{mode}")],
         [("✏️ Edit text", f"adm:edit:{opp_id}:{mode}"),
          ("🖼 Photo", f"adm:photo:{opp_id}:{mode}")],
         [("◀️", f"adm:prev:{opp_id}:{mode}"),
@@ -524,6 +525,16 @@ async def cb_admin(query: CallbackQuery, session: AsyncSession, state: FSMContex
         enrichment = await enrich_opportunity(session, opp)
         note = "" if enrichment else "⚠️ AI unavailable (cap/failure) — original text.\n"
         await _send_preview(query.message, session, opp, mode, note=note)
+        return
+
+    if action == "noai":
+        # straight to the channel-picker preview with the ORIGINAL text:
+        # no AI call, no cap spend (drops a cached AI version if present)
+        if opp.enrichment is not None:
+            opp.enrichment = None
+            await session.flush()
+        await query.answer("Preview (no AI)")
+        await _send_preview(query.message, session, opp, mode)
         return
 
     if action == "orig":

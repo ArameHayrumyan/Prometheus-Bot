@@ -47,8 +47,11 @@ async def sync_channels() -> None:
         rows = (await session.execute(select(Channel))).scalars().all()
         main = next((c for c in rows if c.audience == "main"), None)
         for c in rows:
-            # legacy: degree-linked rows and the old youth row
-            if c.degree_level_code is not None or c.audience == "youth":
+            # legacy cleanup: degree-linked rows, the old youth row, and any
+            # row that isn't main/free (e.g. re-created by an outdated local
+            # container running old startup code against the shared DB)
+            if (c.degree_level_code is not None
+                    or c.audience not in ("main", "free")):
                 await session.delete(c)
         if main is None:
             session.add(Channel(tg_channel_id=chat_id, thread_id=thread_id,

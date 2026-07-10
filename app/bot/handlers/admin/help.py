@@ -17,8 +17,9 @@ PART_1 = """🛠 <b>Admin reference (1/2) — review &amp; sources</b>
 👥 audience (student/🌱youth) · 🏷 type · 🔬 field · ⚠️ eligibility.
 Filters apply to the list AND to card prev/next navigation.
 <code>/queue youth</code> jumps straight to the youth tab.
-Tap a number → the classic card: ✅ Approve · ❌ Reject · ✏️ Edit text ·
-🖼 Photo · ◀️ 🗂 Later ▶️ · 📋 List view.
+Tap a number → the classic card: ✅ Approve · ❌ Reject ·
+📤 Publish without AI (straight to the channel picker, original text,
+zero AI spend) · ✏️ Edit text · 🖼 Photo · ◀️ 🗂 Later ▶️ · 📋 List view.
 
 <b>Approve flow:</b> Approve → one AI call (TL;DR + competitiveness +
 requirement bullets, daily-capped) → preview with the channel checklist

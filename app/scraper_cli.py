@@ -55,6 +55,9 @@ async def main(args: list[str]) -> int:
     bot = Bot(settings.bot_token)
     total = 0
     try:
+        me = await bot.get_me()
+        print(f"Acting as @{me.username} — if this is not your CURRENT bot, "
+              "your local .env has a stale BOT_TOKEN.\n")
         for source_type in types:
             log.info("cli_cycle_start", type=source_type)
             total += await run_source_types(bot, [source_type], notify_admins=True)

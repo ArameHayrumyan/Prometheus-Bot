@@ -21,6 +21,10 @@ if errorlevel 1 (
   exit /b 1
 )
 
+echo [0/2] Stopping any leftover local bot container...
+echo       (an old auto-restarted container would fight the hosted bot)
+docker compose down --remove-orphans >nul 2>nul
+
 echo [1/2] Building the image so it has the latest code...
 echo       (fast after the first time - Docker caches the heavy layers)
 echo.

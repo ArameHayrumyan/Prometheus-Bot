@@ -40,6 +40,7 @@ ADMIN_EXTRA_COMMANDS = [
     BotCommand(command="archive", description="🗂 Shelved for later"),
     BotCommand(command="discards", description="🗑 Discard log"),
     BotCommand(command="stats", description="📊 Pipeline stats"),
+    BotCommand(command="emptyqueue", description="🗑 Clear the pending queue"),
     BotCommand(command="digest", description="🗓 Compile digest previews now"),
     BotCommand(command="scrape", description="🔄 Scrape now (rss/webpage/…/all)"),
     BotCommand(command="ingest", description="📲 Manually ingest a vacancy"),

@@ -19,7 +19,7 @@ from aiogram import F, Router
 from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.enrich import enrich_opportunity
@@ -672,6 +672,60 @@ async def cmd_discards(message: Message, session: AsyncSession):
         lines.append(f"• {aud}<b>{_esc(opp.title[:80])}</b>\n  ↳ <i>{_esc(opp.discard_reason or '')}</i>")
     await message.answer("\n".join(lines)[:4096], parse_mode="HTML",
                          disable_web_page_preview=True)
+
+
+@router.message(Command("emptyqueue"))
+async def cmd_emptyqueue(message: Message, session: AsyncSession):
+    """Delete all PENDING_REVIEW items so a fresh scrape can re-add them
+    (e.g. to re-publish with images). Published posts, the archive and the
+    discard log are untouched. Requires confirmation."""
+    n = (await session.execute(
+        select(func.count()).select_from(Opportunity)
+        .where(Opportunity.status == OppStatus.PENDING_REVIEW)
+    )).scalar_one()
+    if n == 0:
+        await message.answer("📭 The review queue is already empty.")
+        return
+    await message.answer(
+        f"⚠️ <b>Delete all {n} pending items?</b>\n\n"
+        "They leave the review queue so a fresh scrape can re-ingest them. "
+        "<b>Published posts, the 🗂 archive and the discard log are NOT "
+        "affected.</b> This cannot be undone.",
+        parse_mode="HTML",
+        reply_markup=kb([[("🗑 Yes, delete", "emptyq:yes"),
+                          ("✖️ Cancel", "emptyq:no")]]),
+    )
+
+
+@router.callback_query(F.data == "emptyq:no")
+async def cb_emptyq_no(query: CallbackQuery):
+    await query.answer("Cancelled")
+    try:
+        await query.message.edit_text("✖️ Cancelled — the queue is untouched.")
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data == "emptyq:yes")
+async def cb_emptyq_yes(query: CallbackQuery, session: AsyncSession):
+    pending = select(Opportunity.id).where(
+        Opportunity.status == OppStatus.PENDING_REVIEW)
+    # detach audit rows (FK has no cascade) but keep the audit log
+    await session.execute(
+        update(AdminAction).where(AdminAction.opportunity_id.in_(pending))
+        .values(opportunity_id=None))
+    result = await session.execute(
+        delete(Opportunity).where(Opportunity.status == OppStatus.PENDING_REVIEW))
+    await session.commit()
+    await query.answer(f"Deleted {result.rowcount}")
+    session.add(AdminAction(admin_tg_id=query.from_user.id, action="empty_queue",
+                            payload={"deleted": result.rowcount}))
+    try:
+        await query.message.edit_text(
+            f"🗑 Deleted {result.rowcount} pending items. Run a fresh scrape "
+            "(GitHub Actions or local) to repopulate the queue with images.")
+    except Exception:
+        pass
 
 
 @router.message(Command("stats"))

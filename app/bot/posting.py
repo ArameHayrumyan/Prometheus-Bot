@@ -18,6 +18,7 @@ from app.constants import OppStatus
 from app.db.models import Channel, ChannelPost, Opportunity, SavedFilter, User
 from app.i18n import t
 from app.logging_setup import get_logger
+from app.scraping.og_image import fetch_og_image
 from app.utils.text import smart_truncate
 
 log = get_logger("bot.posting")
@@ -210,26 +211,30 @@ async def publish_opportunity(bot: Bot, session: AsyncSession, opp: Opportunity,
             select(Channel).where(Channel.id.in_(channel_ids))
         )).scalars().all()
 
+    # Resolve a photo once: manual upload wins, else scrape the page's
+    # og:image. A send_photo caption maxes at 1024 chars, so only use the
+    # photo path when the post fits; longer posts fall back to a link preview.
+    photo_ref = opp.image_file_id
+    if not photo_ref:
+        photo_ref = await fetch_og_image(opp.apply_url or opp.url)
+    use_photo = bool(photo_ref) and len(text) <= 1024
+    link_preview = LinkPreviewOptions(
+        url=opp.apply_url or opp.url, prefer_large_media=True, show_above_text=True)
+
     posted = 0
     for channel in channels:
         try:
-            if opp.image_file_id:
+            if use_photo:
                 msg = await bot.send_photo(
-                    channel.tg_channel_id, opp.image_file_id,
-                    caption=text[:1024], reply_markup=keyboard, parse_mode="HTML",
+                    channel.tg_channel_id, photo_ref,
+                    caption=text, reply_markup=keyboard, parse_mode="HTML",
                     message_thread_id=channel.thread_id,
                 )
             else:
-                # Telegram fetches the opportunity page's own preview image —
-                # free post images with zero scraping on our side.
                 msg = await bot.send_message(
                     channel.tg_channel_id, text[:4096],
                     reply_markup=keyboard, parse_mode="HTML",
-                    link_preview_options=LinkPreviewOptions(
-                        url=opp.apply_url or opp.url,
-                        prefer_large_media=True,
-                        show_above_text=True,
-                    ),
+                    link_preview_options=link_preview,
                     message_thread_id=channel.thread_id,
                 )
             session.add(ChannelPost(

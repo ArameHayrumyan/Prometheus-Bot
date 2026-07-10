@@ -280,6 +280,26 @@ failover live.
 
 ---
 
+## 8c. Running the cloud-blocked sources locally
+
+Reddit, LinkedIn guest, and Cloudflare-protected pages block GitHub Actions'
+datacenter IP but allow your home IP. Run them from your PC:
+
+- **Double-click `run-hard-sources.bat`** (Windows) — needs Docker Desktop
+  running and a filled `.env`. It runs `scraper_cli hard` (community +
+  linkedin + webpage) and DMs you a summary when done.
+- Or manually: `docker compose run --rm bot python -m app.scraper_cli hard`
+
+Do this weekly. Dedup means overlap with the cloud scrape is harmless.
+
+## 8d. Fresh start: emptying the queue
+
+`/emptyqueue` (admin) deletes every PENDING item after an "are you sure?"
+confirm — published posts, the archive and the discard log are kept. Use it
+to clear an old backlog, then run a fresh scrape so items re-ingest and
+publish with images. (Images are attached at publish time, so you only need
+to re-approve — but emptying gives a clean slate.)
+
 ## 8b. Unblocking Reddit (OAuth)
 
 Reddit's public `.json` endpoint is blocked from datacenter IPs (GitHub

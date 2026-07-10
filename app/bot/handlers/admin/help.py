@@ -29,6 +29,8 @@ toggle → 🚀 Publish to selected / ✏️ Edit first / ↩️ Use original.
 
 /archive — the «🗂 Later» shelf; same card actions + move back to queue.
 /discards — last 15 auto-filtered items with reasons.
+/emptyqueue — delete ALL pending items (with confirm) so a fresh scrape
+   re-adds them; published posts / archive / discards untouched.
    <i>All-«field:» reasons → widen taxonomy keywords (/listfields).</i>
 /stats — pipeline counts + users, saves, applied, outcomes.
 /scrape [type|all] — run a cycle NOW instead of waiting.

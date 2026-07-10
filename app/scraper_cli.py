@@ -11,6 +11,8 @@ Usage (from the repo root, same .env as the bot):
     docker compose run --rm bot python -m app.scraper_cli all
 
 Types: rss, email, webpage, community, telegram, linkedin, all
+Special: `hard` = community + linkedin + webpage (the datacenter-blocked set,
+meant to be run from a home/residential IP).
 """
 import asyncio
 import sys
@@ -32,6 +34,10 @@ async def main(args: list[str]) -> int:
         types = ["rss"]
     elif "all" in args:
         types = ALL_TYPES
+    elif "hard" in args:
+        # sources commonly blocked from datacenter IPs (run from a home IP):
+        # Reddit, LinkedIn guest, and Cloudflare-protected web pages.
+        types = ["community", "linkedin", "webpage"]
     else:
         invalid = [a for a in args if a not in ALL_TYPES]
         if invalid:

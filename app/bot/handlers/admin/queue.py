@@ -149,31 +149,42 @@ async def _count(session: AsyncSession, mode: str, qf: dict) -> int:
     )).scalar_one()
 
 
-async def _fetch_item(session: AsyncSession, mode: str, qf: dict,
-                      after_id: int = 0,
-                      before_id: int | None = None) -> Opportunity | None:
+async def _fetch_item(session: AsyncSession, mode: str, qf: dict, *,
+                      exact_id: int | None = None,
+                      older_than: int | None = None,
+                      newer_than: int | None = None) -> Opportunity | None:
+    """The queue is newest-first: ▶️ walks toward older items (lower ids),
+    ◀️ toward newer ones. exact_id ignores filters (explicit open)."""
     status = MODE_STATUS[mode]
-    if before_id is not None:
+    if exact_id is not None:
+        stmt = select(Opportunity).where(Opportunity.id == exact_id)
+    elif older_than is not None:
         stmt = (select(Opportunity)
-                .where(Opportunity.status == status, Opportunity.id < before_id,
+                .where(Opportunity.status == status, Opportunity.id < older_than,
                        *filter_clauses(qf))
                 .order_by(Opportunity.id.desc()).limit(1))
-    else:
+    elif newer_than is not None:
         stmt = (select(Opportunity)
-                .where(Opportunity.status == status, Opportunity.id > after_id,
+                .where(Opportunity.status == status, Opportunity.id > newer_than,
                        *filter_clauses(qf))
                 .order_by(Opportunity.id).limit(1))
+    else:  # first = newest
+        stmt = (select(Opportunity)
+                .where(Opportunity.status == status, *filter_clauses(qf))
+                .order_by(Opportunity.id.desc()).limit(1))
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
 async def show_queue(message: Message, session: AsyncSession, mode: str = "p",
-                     qf: dict | None = None, after_id: int = 0,
-                     before_id: int | None = None, edit: bool = False):
+                     qf: dict | None = None, *, exact_id: int | None = None,
+                     older_than: int | None = None, newer_than: int | None = None,
+                     edit: bool = False):
     qf = qf or {"aud": "student"}
     total = await _count(session, mode, qf)
-    opp = await _fetch_item(session, mode, qf, after_id, before_id)
-    if opp is None and (after_id or before_id is not None):
-        opp = await _fetch_item(session, mode, qf, 0, None)  # wrap around
+    opp = await _fetch_item(session, mode, qf, exact_id=exact_id,
+                            older_than=older_than, newer_than=newer_than)
+    if opp is None and (exact_id or older_than or newer_than):
+        opp = await _fetch_item(session, mode, qf)  # wrap around to newest
     if opp is None:
         text = ("📭 Nothing here with the current filters "
                 f"(audience: {qf.get('aud')}). /queue resets to the list.")
@@ -228,7 +239,7 @@ async def show_list(message: Message, session: AsyncSession, state: FSMContext,
     items = (await session.execute(
         select(Opportunity)
         .where(Opportunity.status == MODE_STATUS[mode], *filter_clauses(qf))
-        .order_by(Opportunity.id)
+        .order_by(Opportunity.id.desc())  # newest scrapes first
         .offset(page * LIST_PAGE)
         .limit(LIST_PAGE)
     )).scalars().all()
@@ -444,7 +455,7 @@ async def _publish_now(query: CallbackQuery, session: AsyncSession,
         if posted:
             await notify_saved_filters(query.bot, session, opp)
         qf = await get_qf(state)
-        await show_queue(query.message, session, mode, qf, after_id=opp.id, edit=True)
+        await show_queue(query.message, session, mode, qf, older_than=opp.id, edit=True)
     except Exception as e:
         log.warning("post_publish_side_effect_failed", opp_id=opp.id, error=str(e)[:200])
 
@@ -468,17 +479,17 @@ async def cb_admin(query: CallbackQuery, session: AsyncSession, state: FSMContex
         qf_open = dict(qf, aud=opp.audience)
         await set_qf(state, qf_open)
         await show_queue(query.message, session, mode, qf_open,
-                         after_id=opp_id - 1, edit=True)
+                         exact_id=opp_id, edit=True)
         return
 
-    if action == "skip":
+    if action == "skip":  # ▶️ next = older (list is newest-first)
         await query.answer()
-        await show_queue(query.message, session, mode, qf, after_id=opp_id, edit=True)
+        await show_queue(query.message, session, mode, qf, older_than=opp_id, edit=True)
         return
 
-    if action == "prev":
+    if action == "prev":  # ◀️ = newer
         await query.answer()
-        await show_queue(query.message, session, mode, qf, before_id=opp_id, edit=True)
+        await show_queue(query.message, session, mode, qf, newer_than=opp_id, edit=True)
         return
 
     if action == "archive":
@@ -494,7 +505,7 @@ async def cb_admin(query: CallbackQuery, session: AsyncSession, state: FSMContex
                                     opportunity_id=opp.id, action="unarchive"))
             await session.flush()
             await query.answer("Moved back to /queue")
-        await show_queue(query.message, session, mode, qf, after_id=opp_id, edit=True)
+        await show_queue(query.message, session, mode, qf, older_than=opp_id, edit=True)
         return
 
     if action == "reject":
@@ -503,7 +514,7 @@ async def cb_admin(query: CallbackQuery, session: AsyncSession, state: FSMContex
                                 action="reject"))
         await session.flush()
         await query.answer("Rejected")
-        await show_queue(query.message, session, mode, qf, after_id=opp_id, edit=True)
+        await show_queue(query.message, session, mode, qf, older_than=opp_id, edit=True)
         return
 
     if action == "approve":

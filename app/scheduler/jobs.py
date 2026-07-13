@@ -50,7 +50,11 @@ async def run_source_types(bot: Bot, source_types: list[str],
                     continue
                 raws = await fetch_source(session, source)
                 audience = (source.meta or {}).get("audience", "student")
-                for raw in raws:
+                # cap per source so mega-boards can't drown niche sources;
+                # per-source override via meta.max_items
+                cap = int((source.meta or {}).get(
+                    "max_items", await get_setting(session, "max_items_per_source")))
+                for raw in raws[:cap]:
                     raw.audience = audience
                     opp = await process_raw(session, raw)
                     if opp is not None:

@@ -131,3 +131,17 @@ async def cmd_setminduration(message: Message, command: CommandObject, session: 
         return
     await set_setting(session, "min_duration_days", int(arg))
     await message.answer(f"✅ Minimum duration: {arg} days")
+
+
+@router.message(Command("setmaxitems"))
+async def cmd_setmaxitems(message: Message, command: CommandObject, session: AsyncSession):
+    arg = (command.args or "").strip()
+    if not arg.isdigit():
+        current = await get_setting(session, "max_items_per_source")
+        await message.answer(
+            f"Usage: /setmaxitems <n>\nMax items ingested per source per cycle: "
+            f"{current}\n(Stops mega-boards flooding the queue. Boost a single "
+            "good source with /sourcemeta <id> max_items 30.)")
+        return
+    await set_setting(session, "max_items_per_source", int(arg))
+    await message.answer(f"✅ Max items per source per cycle: {arg}")

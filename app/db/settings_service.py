@@ -13,6 +13,9 @@ DEFAULTS: dict[str, Any] = {
     "min_duration_days": 15,
     "ai_priority": ["groq", "deepseek", "gemini"],
     "enrich_daily_cap": 50,
+    # cap items ingested per source per cycle so mega-boards (RemoteOK,
+    # WeWorkRemotely: 50 each) can't drown niche/low-competition sources
+    "max_items_per_source": 12,
     "ai_disabled": [],
     "noise_keywords": [
         "leadership camp", "youth summit", "youth forum", "networking event",
